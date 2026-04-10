@@ -12,9 +12,12 @@ export interface Service {
   id: string;
   version?: number;
   name: string;
+  variation_name?: string;
   category: string;
   cost: number;
   duration: number;
+  variation_id?: string;  // provider-agnostic service variation key
+  item_id?: string;        // provider-agnostic service item key
 }
 
 export interface Client {
@@ -58,7 +61,7 @@ export interface GeneratedPlan {
 export interface BookingRecord {
   id: string;
   planId: string;
-  squareBookingId?: string;
+  providerBookingId?: string;  // opaque reference, never displayed
   startAt: string;
   status: string;
   services: { name: string }[];
@@ -95,11 +98,11 @@ export interface ClientInvitation {
   invite_phone?: string;
   invite_name: string;
   status: 'pending' | 'accepted' | 'expired' | 'revoked';
-  activation_token: string;
+  // activation_token is NEVER exposed to clients — validated server-side only
   activation_expires_at: string;
   accepted_at?: string;
   accepted_user_id?: string;
-  provider_customer_id?: string;
+  // provider_customer_id is NEVER exposed to clients — resolved server-side only
   created_at: string;
   updated_at: string;
 }
@@ -108,8 +111,8 @@ export interface ClientProviderMapping {
   id: string;
   salon_id: string;
   user_id: string;
-  provider_type: 'square' | 'vagaro' | 'mindbody';
-  provider_customer_id: string;
+  provider_type: string;  // opaque — clients never act on this value
+  provider_customer_id: string;  // opaque — resolved server-side, never sent to provider APIs by client
   synced_at: string;
   raw_data?: any;
 }

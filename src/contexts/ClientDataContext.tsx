@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { supabase } from '../lib/supabase';
+import { useAuth } from './AuthContext';
 import type { Service, MembershipTier, GeneratedPlan, BookingRecord } from '../types';
 
 interface ClientDataContextType {
@@ -8,23 +10,82 @@ interface ClientDataContextType {
   bookings: BookingRecord[];
   loading: boolean;
   error: string | null;
+  refresh: () => Promise<void>;
 }
 
 const ClientDataContext = createContext<ClientDataContextType | undefined>(undefined);
 
 export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { user, isAuthenticated, membership } = useAuth();
   const [services, setServices] = useState<Service[]>([]);
   const [membershipTiers, setMembershipTiers] = useState<MembershipTier[]>([]);
   const [plans, setPlans] = useState<GeneratedPlan[]>([]);
   const [bookings, setBookings] = useState<BookingRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Placeholder for future implementation
-  // Will load client data from Supabase in Phase 2+
+  const refresh = useCallback(async () => {
+    if (!user || !membership) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const salonId = membership.salon_id;
+
+      // Load services via salon-scoped server endpoint
+      // Clients must NOT query services by supabase_user_id directly.
+      // The /api/client/services endpoint resolves salon → admin ownership server-side
+      // and returns only services belonging to the client's salon.
+      const servicesRes = await fetch(`/api/client/services?salon_id=${encodeURIComponent(salonId)}`, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!servicesRes.ok) {
+        throw new Error('Failed to load services');
+      }
+      const servicesData = await servicesRes.json();
+      setServices((servicesData || []) as Service[]);
+
+      // Load plans for this client (RLS enforces client_user_id = auth.uid())
+      const { data: plansData, error: plansError } = await supabase
+        .from('plans')
+        .select('*')
+        .eq('client_user_id', user.id);
+
+      if (plansError) throw plansError;
+      setPlans((plansData || []) as GeneratedPlan[]);
+
+      // Load bookings for this client (RLS enforces client_user_id = auth.uid())
+      const { data: bookingsData, error: bookingsError } = await supabase
+        .from('bookings')
+        .select('*')
+        .eq('client_user_id', user.id);
+
+      if (bookingsError) throw bookingsError;
+      setBookings((bookingsData || []) as BookingRecord[]);
+
+    } catch (err) {
+      console.error('Client data load error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load data');
+    } finally {
+      setLoading(false);
+    }
+  }, [user, membership]);
+
+  useEffect(() => {
+    if (isAuthenticated && membership) {
+      refresh();
+    } else {
+      setServices([]);
+      setMembershipTiers([]);
+      setPlans([]);
+      setBookings([]);
+      setLoading(false);
+    }
+  }, [isAuthenticated, membership, refresh]);
 
   return (
-    <ClientDataContext.Provider value={{ services, membershipTiers, plans, bookings, loading, error }}>
+    <ClientDataContext.Provider value={{ services, membershipTiers, plans, bookings, loading, error, refresh }}>
       {children}
     </ClientDataContext.Provider>
   );

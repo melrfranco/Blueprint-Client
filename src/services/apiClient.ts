@@ -1,20 +1,158 @@
-// Placeholder for API client
-// Will be implemented in Phase 2+ for booking, data fetching, etc.
+import { supabase } from '../lib/supabase';
+
+const API_BASE = '/api';
+
+async function getAccessToken(): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token ?? null;
+}
+
+export interface TimeSlot {
+  start_at: string;
+  end_at: string;
+  available: boolean;
+}
+
+export interface AvailabilityResponse {
+  date: string;
+  slots: TimeSlot[];
+}
+
+export interface BookingResult {
+  id: string | null;
+  provider_booking_id: string;
+  status: string;
+  start_at: string;
+  end_at: string;
+  warning?: string;
+}
+
+export interface ActivationDetails {
+  invite_name: string;
+  invite_email: string;
+  salon_name: string;
+  token_valid: boolean;
+  booking_eligible: boolean;
+}
+
+export interface ActivationPayload {
+  token: string;
+  email: string;
+  password: string;
+}
+
+export interface ActivationResult {
+  success: boolean;
+  booking_eligible: boolean;
+  message?: string;
+}
 
 export const apiClient = {
-  // Placeholder methods for future implementation
-  async getClientData() {
-    // TODO: Fetch client plans, bookings, membership
-    return {};
+  // ── Activation ──
+
+  async getActivationDetails(token: string): Promise<ActivationDetails> {
+    const response = await fetch(`${API_BASE}/client/activate?token=${encodeURIComponent(token)}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.message || 'Invalid or expired activation link');
+    }
+
+    return response.json();
   },
 
-  async checkAvailability() {
-    // TODO: Check booking availability via server endpoint
-    return [];
+  async completeActivation(payload: ActivationPayload): Promise<ActivationResult> {
+    const response = await fetch(`${API_BASE}/client/activate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(data.message || 'Activation failed');
+    }
+
+    return data;
   },
 
-  async createBooking() {
-    // TODO: Create booking via server endpoint
-    return {};
+  // ── Auth ──
+
+  async login(email: string, password: string): Promise<void> {
+    // Login is handled directly via Supabase in AuthContext
+    // This method exists for future server-side login flows
+    throw new Error('Use AuthContext.login() for client authentication');
+  },
+
+  async logout(): Promise<void> {
+    // Logout is handled directly via Supabase in AuthContext
+    throw new Error('Use AuthContext.logout() for client authentication');
+  },
+
+  // ── Booking ──
+
+  async getAvailability(params: {
+    serviceVariationId: string;
+    date: string;
+    teamMemberId?: string;
+  }): Promise<AvailabilityResponse> {
+    const token = await getAccessToken();
+    const paramsObj = new URLSearchParams({
+      service_variation_id: params.serviceVariationId,
+      date: params.date,
+    });
+    if (params.teamMemberId) {
+      paramsObj.set('team_member_id', params.teamMemberId);
+    }
+
+    const response = await fetch(`${API_BASE}/bookings/availability?${paramsObj}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(data.message || 'Failed to fetch availability');
+    }
+
+    return data;
+  },
+
+  async createBooking(params: {
+    serviceVariationId: string;
+    startAt: string;
+    teamMemberId?: string;
+    planId?: string;
+  }): Promise<BookingResult> {
+    const token = await getAccessToken();
+    const response = await fetch(`${API_BASE}/bookings/create`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        service_variation_id: params.serviceVariationId,
+        start_at: params.startAt,
+        team_member_id: params.teamMemberId || undefined,
+        plan_id: params.planId || undefined,
+      }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(data.message || 'Failed to create booking');
+    }
+
+    return data;
   },
 };

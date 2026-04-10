@@ -15,6 +15,12 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3001,
       host: true,
+      proxy: {
+        '/api': {
+          target: 'http://localhost:3001',
+          rewrite: (path) => path,
+        },
+      },
     },
     define: {
       'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL),

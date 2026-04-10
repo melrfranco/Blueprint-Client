@@ -1,29 +1,48 @@
 import React, { useState } from 'react';
+import { BrowserRouter, Routes, Route, useSearchParams, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { ClientDataProvider } from './contexts/ClientDataContext';
 import { LoginScreen } from './components/LoginScreen';
+import { ActivationScreen } from './components/ActivationScreen';
 import { ClientDashboard } from './components/ClientDashboard';
 import { ProfileSettings } from './components/ProfileSettings';
 import { BottomNav } from './components/BottomNav';
 
-const AppContent: React.FC = () => {
-  const { isAuthenticated, authInitialized } = useAuth();
-  const [activeTab, setActiveTab] = useState('home');
+const ActivationRoute: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const token = searchParams.get('token') || '';
 
-  if (!authInitialized) {
+  const handleActivated = () => {
+    navigate('/', { replace: true });
+  };
+
+  if (!token) {
     return (
-      <div className="bp-page">
-        <div className="flex items-center justify-center h-full">
-          <p className="bp-body-sm text-muted-foreground">Loading...</p>
+      <div className="bp-login-screen">
+        <div className="bp-login-card">
+          <div className="bp-login-logo-wrap">
+            <div className="text-center">
+              <h1 className="bp-page-title">Blueprint Client</h1>
+              <p className="bp-overline mt-2">Activation Error</p>
+            </div>
+          </div>
+          <div className="bp-login-body">
+            <p className="bp-body-sm text-center text-muted-foreground">
+              No activation token found. Please use the link sent by your salon.
+            </p>
+          </div>
         </div>
       </div>
     );
   }
 
-  if (!isAuthenticated) {
-    return <LoginScreen />;
-  }
+  return <ActivationScreen token={token} onActivated={handleActivated} />;
+};
+
+const AuthenticatedShell: React.FC = () => {
+  const [activeTab, setActiveTab] = useState('home');
 
   const renderContent = () => {
     switch (activeTab) {
@@ -68,15 +87,38 @@ const AppContent: React.FC = () => {
   );
 };
 
+const AppContent: React.FC = () => {
+  const { isAuthenticated, authInitialized } = useAuth();
+
+  if (!authInitialized) {
+    return (
+      <div className="bp-page">
+        <div className="flex items-center justify-center h-full">
+          <p className="bp-body-sm text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Routes>
+      <Route path="/activate" element={<ActivationRoute />} />
+      <Route path="*" element={isAuthenticated ? <AuthenticatedShell /> : <LoginScreen />} />
+    </Routes>
+  );
+};
+
 const App: React.FC = () => {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <ClientDataProvider>
-          <AppContent />
-        </ClientDataProvider>
-      </AuthProvider>
-    </ThemeProvider>
+    <BrowserRouter>
+      <ThemeProvider>
+        <AuthProvider>
+          <ClientDataProvider>
+            <AppContent />
+          </ClientDataProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </BrowserRouter>
   );
 };
 

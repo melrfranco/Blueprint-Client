@@ -22,7 +22,8 @@
  *   - Provider credentials survive ownership changes
  *
  * Do NOT extend this owner_user_id pattern to new code.
- * See: /api/client/services.ts for the same temporary pattern.
+ * See: /api/client/services.ts for a similar temporary pattern
+ * (resolves salon → owner_user_id → filters services by metadata).
  * ──────────────────────────────────────────────────────────────────
  */
 

@@ -34,9 +34,10 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
       const salonId = membership.salon_id;
 
       // Load services via salon-scoped server endpoint
-      // Clients must NOT query services by supabase_user_id directly.
-      // The /api/client/services endpoint resolves salon → admin ownership server-side
-      // and returns only services belonging to the client's salon.
+      // The services table has no supabase_user_id column — salon linkage
+      // lives in metadata->>'admin_user_id' (jsonb). The server endpoint
+      // resolves salon → owner_user_id → filters by metadata, so the client
+      // never needs to know about the internal scoping mechanism.
       const servicesRes = await fetch(`/api/client/services?salon_id=${encodeURIComponent(salonId)}`, {
         headers: { 'Content-Type': 'application/json' },
       });

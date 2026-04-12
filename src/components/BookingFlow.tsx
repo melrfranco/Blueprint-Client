@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { apiClient } from '../services/apiClient';
 import type { TimeSlot, AvailabilityResponse } from '../services/apiClient';
 import type { Service } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { useClientData } from '../contexts/ClientDataContext';
 import { CheckCircleIcon } from './icons';
 
 interface BookingFlowProps {
@@ -180,7 +179,7 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({ service, planId, onClo
           </div>
 
           <div className="flex gap-3">
-            <button onClick={handleConfirm} className="bp-button bp-button-primary flex-1" disabled={step === 'submitting'}>
+            <button onClick={handleConfirm} className="bp-button bp-button-primary flex-1">
               Confirm Booking
             </button>
             <button onClick={() => setStep('select-time')} className="bp-button bp-button-ghost flex-1">

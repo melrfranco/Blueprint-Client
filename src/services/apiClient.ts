@@ -82,7 +82,7 @@ export const apiClient = {
 
   // ── Auth ──
 
-  async login(email: string, password: string): Promise<void> {
+  async login(): Promise<void> {
     // Login is handled directly via Supabase in AuthContext
     // This method exists for future server-side login flows
     throw new Error('Use AuthContext.login() for client authentication');

@@ -59,11 +59,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(404).json({ code: 'SALON_NOT_FOUND', message: 'Salon not found' });
     }
 
+    // Service lookup: square_variation_id lives in metadata jsonb
     const { data: serviceRow } = await supabase
       .from('services')
-      .select('square_variation_id')
-      .eq('supabase_user_id', salon.owner_user_id)
-      .eq('square_variation_id', service_variation_id)
+      .select('id, metadata')
+      .eq('source', 'square')
+      .contains('metadata', {
+        admin_user_id: salon.owner_user_id,
+        square_variation_id: service_variation_id,
+      })
       .maybeSingle();
 
     if (!serviceRow) {

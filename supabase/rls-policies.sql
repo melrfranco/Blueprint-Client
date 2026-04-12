@@ -85,25 +85,23 @@ CREATE POLICY "Clients can read own bookings"
 -- via /api/bookings/create which uses service role key
 
 -- ══════════════════════════════════════════════════════════════════
--- services (read-only for clients)
+-- services — RLS DISABLED (temporary)
+-- ══════════════════════════════════════════════════════════════════
+-- The services table has no supabase_user_id or salon_id column.
+-- Salon linkage lives in metadata->>'admin_user_id' (jsonb), which
+-- cannot be used in RLS USING expressions efficiently.
+--
+-- All service reads happen server-side via the service role key
+-- (which bypasses RLS). The /api/client/services endpoint filters
+-- by metadata @> { admin_user_id } matching the salon's owner_user_id.
+--
+-- FUTURE: Add a salon_id column to services, then enable RLS with:
+--   salon_id IN (SELECT salon_id FROM salon_memberships
+--     WHERE user_id = auth.uid() AND status = 'active' AND role = 'client')
 -- ══════════════════════════════════════════════════════════════════
 
--- Clients can read services for salons they belong to
--- This requires a join through salon_memberships to verify membership
-CREATE POLICY "Clients can read services for own salon"
-  ON services FOR SELECT
-  TO authenticated
-  USING (
-    supabase_user_id IN (
-      SELECT s.owner_user_id
-      FROM salons s
-      INNER JOIN salon_memberships sm
-        ON sm.salon_id = s.id
-        AND sm.user_id = auth.uid()
-        AND sm.status = 'active'
-        AND sm.role = 'client'
-    )
-  );
+-- ALTER TABLE services ENABLE ROW LEVEL SECURITY;  -- intentionally disabled
+-- No RLS policy for services until salon_id column is added.
 
 -- No client writes to services — synced by admin via Square API
 

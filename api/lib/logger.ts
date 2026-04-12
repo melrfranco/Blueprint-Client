@@ -1,3 +1,4 @@
+
 /**
  * Structured logging for Blueprint server endpoints.
  *

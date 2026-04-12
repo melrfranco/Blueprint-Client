@@ -1,21 +1,14 @@
 /**
  * Client services endpoint — returns services for a given salon.
  *
- * TEMPORARY ASSUMPTION — SERVICE RESOLUTION VIA owner_user_id
- * ──────────────────────────────────────────────────────────────
- * The services table is currently scoped by supabase_user_id (the admin
- * who synced them from Square). This endpoint resolves salon_id →
- * owner_user_id → queries services by that user ID.
+ * SERVICE RESOLUTION VIA metadata->admin_user_id
+ * ──────────────────────────────────────────────
+ * The services table has no supabase_user_id column. Square-specific
+ * identifiers (variation_id, item_id) are stored in the metadata jsonb
+ * column. Services are scoped by metadata->>'admin_user_id' matching
+ * the salon's owner_user_id.
  *
- * This is a TEMPORARY shortcut. The services table should eventually be
- * scoped by salon_id directly, or by a provider-scoped key, so that:
- *   - No owner_user_id resolution step is needed
- *   - Services survive ownership changes
- *   - The query model is salon-scoped, not user-scoped
- *
- * Do NOT extend this owner_user_id pattern to new code.
- * See: /api/lib/provider-factory.ts for the same temporary pattern.
- * ──────────────────────────────────────────────────────────────
+ * FUTURE: Add a salon_id column to services so this join isn't needed.
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -41,8 +34,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ message: 'Missing salon_id' });
   }
 
-  // TEMPORARY: Resolve salon → owner (admin) user_id
-  // See module-level docstring for why this is temporary.
+  // Resolve salon → owner_user_id
   const { data: salon, error: salonError } = await supabase
     .from('salons')
     .select('owner_user_id')
@@ -53,25 +45,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(404).json({ message: 'Salon not found' });
   }
 
-  // TEMPORARY: Fetch services using the resolved admin user ID
-  // Future: query by salon_id directly once services table is salon-scoped
+  // Fetch services where metadata->>'admin_user_id' matches the salon owner
   const { data: services, error: servicesError } = await supabase
     .from('services')
     .select('*')
-    .eq('supabase_user_id', salon.owner_user_id);
+    .eq('source', 'square')
+    .contains('metadata', { admin_user_id: salon.owner_user_id });
 
   if (servicesError) {
     return res.status(500).json({ code: 'INTERNAL_ERROR', message: 'Failed to load services' });
   }
 
-  // Map provider-specific field names to provider-agnostic names
-  // The client never sees square_variation_id or square_item_id
+  // Map metadata fields to provider-agnostic names for the client
   const sanitized = (services || []).map((s: any) => ({
-    ...s,
-    variation_id: s.square_variation_id || null,
-    item_id: s.square_item_id || null,
-    square_variation_id: undefined,
-    square_item_id: undefined,
+    id: s.id,
+    name: s.name,
+    cost: s.cost,
+    duration: s.duration,
+    category: s.category,
+    source: s.source,
+    variation_id: s.metadata?.square_variation_id || null,
+    item_id: s.metadata?.square_item_id || null,
+    variation_name: s.metadata?.variation_name || null,
   }));
 
   return res.status(200).json(sanitized);

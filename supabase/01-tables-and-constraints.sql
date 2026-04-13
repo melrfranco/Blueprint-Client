@@ -198,6 +198,44 @@ BEGIN
   END IF;
 END $$;
 
+-- ══════════════════════════════════════════════════════════════════
+-- Phase A3: Add salon_id to core tables (Phase 1 salon-scoping)
+-- Nullable during transition; will become NOT NULL after backfill + verification.
+-- ══════════════════════════════════════════════════════════════════
+
+-- clients.salon_id — salon this client belongs to
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'clients' AND column_name = 'salon_id'
+  ) THEN
+    ALTER TABLE clients ADD COLUMN salon_id uuid REFERENCES salons(id) ON DELETE CASCADE;
+  END IF;
+END $$;
+
+-- services.salon_id — salon this service belongs to
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'services' AND column_name = 'salon_id'
+  ) THEN
+    ALTER TABLE services ADD COLUMN salon_id uuid REFERENCES salons(id) ON DELETE CASCADE;
+  END IF;
+END $$;
+
+-- square_team_members.salon_id — salon this team member belongs to
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'square_team_members' AND column_name = 'salon_id'
+  ) THEN
+    ALTER TABLE square_team_members ADD COLUMN salon_id uuid REFERENCES salons(id) ON DELETE CASCADE;
+  END IF;
+END $$;
+
 
 -- ══════════════════════════════════════════════════════════════════
 -- Phase B: Constraints, Indexes, Unique Constraints
@@ -269,9 +307,19 @@ CREATE INDEX IF NOT EXISTS idx_services_source
 CREATE INDEX IF NOT EXISTS idx_clients_supabase_user_id
   ON clients (supabase_user_id);
 
+CREATE INDEX IF NOT EXISTS idx_clients_salon_id
+  ON clients (salon_id);
+
+-- ── services ── (salon_id index added alongside existing metadata/source indexes)
+CREATE INDEX IF NOT EXISTS idx_services_salon_id
+  ON services (salon_id);
+
 -- ── square_team_members ──
 CREATE INDEX IF NOT EXISTS idx_square_team_members_supabase_user_id
   ON square_team_members (supabase_user_id);
 
 CREATE INDEX IF NOT EXISTS idx_square_team_members_square_id
   ON square_team_members (square_team_member_id);
+
+CREATE INDEX IF NOT EXISTS idx_square_team_members_salon_id
+  ON square_team_members (salon_id);

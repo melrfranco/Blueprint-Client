@@ -36,9 +36,15 @@ export interface ActivationDetails {
 }
 
 export interface ActivationPayload {
-  token: string;
+  token?: string;
+  claim_code?: string;
   email: string;
   password: string;
+}
+
+export interface ActivationLookupParams {
+  token?: string;
+  claimCode?: string;
 }
 
 export interface ActivationResult {
@@ -50,15 +56,26 @@ export interface ActivationResult {
 export const apiClient = {
   // ── Activation ──
 
-  async getActivationDetails(token: string): Promise<ActivationDetails> {
-    const response = await fetch(`${API_BASE}/client/activate?token=${encodeURIComponent(token)}`, {
+  async getActivationDetails(params: ActivationLookupParams | string): Promise<ActivationDetails> {
+    // Backwards compatible: accept a bare token string.
+    const { token, claimCode } = typeof params === 'string' ? { token: params, claimCode: undefined } : params;
+
+    const qs = token
+      ? `token=${encodeURIComponent(token)}`
+      : claimCode
+        ? `claim_code=${encodeURIComponent(claimCode)}`
+        : '';
+
+    if (!qs) throw new Error('Missing activation token or claim code');
+
+    const response = await fetch(`${API_BASE}/client/activate?${qs}`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
     });
 
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
-      throw new Error(data.message || 'Invalid or expired activation link');
+      throw new Error(data.message || 'Invalid or expired activation credential');
     }
 
     return response.json();

@@ -5,6 +5,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { ClientDataProvider } from './contexts/ClientDataContext';
 import { LoginScreen } from './components/LoginScreen';
 import { ActivationScreen } from './components/ActivationScreen';
+import { ClaimCodeEntry } from './components/ClaimCodeEntry';
 import { ClientDashboard } from './components/ClientDashboard';
 import { ProfileSettings } from './components/ProfileSettings';
 import { BottomNav } from './components/BottomNav';
@@ -39,6 +40,11 @@ const ActivationRoute: React.FC = () => {
   }
 
   return <ActivationScreen token={token} onActivated={handleActivated} />;
+};
+
+const ClaimRoute: React.FC = () => {
+  const navigate = useNavigate();
+  return <ClaimCodeEntry onActivated={() => navigate('/', { replace: true })} />;
 };
 
 const AuthenticatedShell: React.FC = () => {
@@ -103,6 +109,7 @@ const AppContent: React.FC = () => {
   return (
     <Routes>
       <Route path="/activate" element={<ActivationRoute />} />
+      <Route path="/claim" element={<ClaimRoute />} />
       <Route path="*" element={isAuthenticated ? <AuthenticatedShell /> : <LoginScreen />} />
     </Routes>
   );

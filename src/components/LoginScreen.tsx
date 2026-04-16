@@ -152,7 +152,11 @@ export const LoginScreen: React.FC = () => {
           </button>
 
           <p className="bp-caption text-center text-muted-foreground">
-            New here? Click the activation link your salon sent you to set up your account.
+            New here? Click the activation link your salon sent you, or{' '}
+            <a href="/claim" className="underline text-primary font-semibold">
+              enter a claim code
+            </a>
+            .
           </p>
         </div>
       </div>

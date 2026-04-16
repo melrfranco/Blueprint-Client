@@ -4,13 +4,14 @@ import type { ActivationDetails, ActivationResult } from '../services/apiClient'
 import { CheckCircleIcon } from './icons';
 
 interface ActivationScreenProps {
-  token: string;
+  token?: string;
+  claimCode?: string;
   onActivated: () => void;
 }
 
 type ActivationStep = 'validating' | 'setup' | 'submitting' | 'success' | 'error';
 
-export const ActivationScreen: React.FC<ActivationScreenProps> = ({ token, onActivated }) => {
+export const ActivationScreen: React.FC<ActivationScreenProps> = ({ token, claimCode, onActivated }) => {
   const [step, setStep] = useState<ActivationStep>('validating');
   const [details, setDetails] = useState<ActivationDetails | null>(null);
   const [error, setError] = useState('');
@@ -22,23 +23,23 @@ export const ActivationScreen: React.FC<ActivationScreenProps> = ({ token, onAct
   useEffect(() => {
     const validate = async () => {
       try {
-        const result = await apiClient.getActivationDetails(token);
+        const result = await apiClient.getActivationDetails({ token, claimCode });
         setDetails(result);
         setEmail(result.invite_email);
         setStep('setup');
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Invalid activation link');
+        setError(err instanceof Error ? err.message : 'Invalid activation credential');
         setStep('error');
       }
     };
 
-    if (token) {
+    if (token || claimCode) {
       validate();
     } else {
-      setError('No activation token provided');
+      setError('No activation token or claim code provided');
       setStep('error');
     }
-  }, [token]);
+  }, [token, claimCode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,7 +59,8 @@ export const ActivationScreen: React.FC<ActivationScreenProps> = ({ token, onAct
 
     try {
       const result = await apiClient.completeActivation({
-        token,
+        token: token || undefined,
+        claim_code: claimCode || undefined,
         email,
         password,
       });

@@ -13,26 +13,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-  // ── GET: Validate activation token ──
+  // ── GET: Validate activation token or claim code ──
   if (req.method === 'GET') {
-    const { token } = req.query;
+    const { token, claim_code } = req.query;
 
-    if (!token || typeof token !== 'string') {
-      return res.status(400).json({ code: 'MISSING_TOKEN', message: 'Missing activation token' });
+    const rawToken = typeof token === 'string' ? token : '';
+    const rawCode = typeof claim_code === 'string' ? claim_code.trim().toUpperCase() : '';
+
+    if (!rawToken && !rawCode) {
+      return res.status(400).json({ code: 'MISSING_CREDENTIAL', message: 'Missing activation token or claim code' });
     }
 
-    // Hash the incoming token to compare against the stored SHA-256 hash
-    const hashedToken = createHash('sha256').update(token).digest('hex');
-
-    const { data: invitation, error } = await supabase
+    let query = supabase
       .from('client_invitations')
-      .select('invite_name, invite_email, status, activation_expires_at, salon_id, provider_customer_id')
-      .eq('activation_token', hashedToken)
-      .maybeSingle();
+      .select('invite_name, invite_email, status, activation_expires_at, salon_id, provider_customer_id');
+
+    if (rawToken) {
+      const hashedToken = createHash('sha256').update(rawToken).digest('hex');
+      query = query.eq('activation_token', hashedToken);
+    } else {
+      query = query.eq('claim_code', rawCode);
+    }
+
+    const { data: invitation, error } = await query.maybeSingle();
 
     if (error || !invitation) {
-      log('ACTIVATE_TOKEN_INVALID', { tokenPrefix: token.substring(0, 8) });
-      return res.status(404).json({ code: 'INVALID_TOKEN', message: 'Invalid activation link' });
+      log('ACTIVATE_CREDENTIAL_INVALID', { mode: rawToken ? 'token' : 'code' });
+      return res.status(404).json({
+        code: rawToken ? 'INVALID_TOKEN' : 'INVALID_CODE',
+        message: rawToken ? 'Invalid activation link' : 'Invalid claim code',
+      });
     }
 
     if (invitation.status !== 'pending') {
@@ -67,9 +77,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // ── POST: Complete activation ──
   if (req.method === 'POST') {
-    const { token, email, password } = req.body;
+    const { token, claim_code, email, password } = req.body;
 
-    if (!token || !email || !password) {
+    const rawToken = typeof token === 'string' ? token : '';
+    const rawCode = typeof claim_code === 'string' ? claim_code.trim().toUpperCase() : '';
+
+    if ((!rawToken && !rawCode) || !email || !password) {
       return res.status(400).json({ code: 'MISSING_FIELDS', message: 'Missing required fields' });
     }
 
@@ -77,19 +90,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ code: 'WEAK_PASSWORD', message: 'Password must be at least 8 characters' });
     }
 
-    // 1. Validate token — hash incoming token to compare against stored SHA-256 hash
-    const hashedToken = createHash('sha256').update(token).digest('hex');
-
-    const { data: invitation, error: invError } = await supabase
+    // 1. Resolve invitation by token hash or claim code
+    let invQuery = supabase
       .from('client_invitations')
       .select('*')
-      .eq('activation_token', hashedToken)
-      .eq('status', 'pending')
-      .maybeSingle();
+      .eq('status', 'pending');
+
+    if (rawToken) {
+      const hashedToken = createHash('sha256').update(rawToken).digest('hex');
+      invQuery = invQuery.eq('activation_token', hashedToken);
+    } else {
+      invQuery = invQuery.eq('claim_code', rawCode);
+    }
+
+    const { data: invitation, error: invError } = await invQuery.maybeSingle();
 
     if (invError || !invitation) {
-      log('ACTIVATE_POST_TOKEN_INVALID', { email });
-      return res.status(404).json({ code: 'INVALID_TOKEN', message: 'Invalid or expired activation link' });
+      log('ACTIVATE_POST_CREDENTIAL_INVALID', { email, mode: rawToken ? 'token' : 'code' });
+      return res.status(404).json({
+        code: rawToken ? 'INVALID_TOKEN' : 'INVALID_CODE',
+        message: rawToken ? 'Invalid or expired activation link' : 'Invalid or expired claim code',
+      });
     }
 
     const now = new Date().toISOString();

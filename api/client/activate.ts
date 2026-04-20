@@ -158,12 +158,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ code: 'MEMBERSHIP_FAILED', message: 'Failed to set up salon membership' });
     }
 
-    // 4. Link plan to user
-    await supabase
-      .from('plans')
-      .update({ client_user_id: userId })
-      .eq('id', invitation.plan_id)
-      .is('client_user_id', null);
+    // 4. Link plans to user
+    // Fetch the invitation's plan to learn its client_id (internal clients row),
+    // then link ALL plans for that client_id to this user — not just the one
+    // referenced by the invitation. This covers historical plans.
+    let plansLinked = 0;
+    try {
+      const { data: invitationPlan } = await supabase
+        .from('plans')
+        .select('id, client_id')
+        .eq('id', invitation.plan_id)
+        .maybeSingle();
+
+      if (!invitationPlan) {
+        log('ACTIVATE_PLAN_NOT_FOUND', { userId, planId: invitation.plan_id });
+      } else if (!invitationPlan.client_id) {
+        // Fallback: only link the one plan we have
+        const { data: linked, error: linkErr } = await supabase
+          .from('plans')
+          .update({ client_user_id: userId, salon_id: invitation.salon_id })
+          .eq('id', invitation.plan_id)
+          .or(`client_user_id.is.null,client_user_id.eq.${userId}`)
+          .select('id');
+        if (linkErr) {
+          log('ACTIVATE_PLAN_LINK_ERROR', { userId, error: linkErr.message });
+        } else {
+          plansLinked = linked?.length || 0;
+        }
+      } else {
+        // Link all plans for this client_id that aren't claimed by someone else
+        const { data: linked, error: linkErr } = await supabase
+          .from('plans')
+          .update({ client_user_id: userId, salon_id: invitation.salon_id })
+          .eq('client_id', invitationPlan.client_id)
+          .or(`client_user_id.is.null,client_user_id.eq.${userId}`)
+          .select('id');
+        if (linkErr) {
+          log('ACTIVATE_PLAN_LINK_ERROR', { userId, clientId: invitationPlan.client_id, error: linkErr.message });
+        } else {
+          plansLinked = linked?.length || 0;
+          log('ACTIVATE_PLANS_LINKED', { userId, clientId: invitationPlan.client_id, count: plansLinked });
+        }
+      }
+    } catch (e: any) {
+      log('ACTIVATE_PLAN_LINK_EXCEPTION', { userId, error: e?.message });
+    }
 
     // 5. Provider mapping — REQUIRED for booking eligibility
     // Blueprint-Pro must set provider_customer_id on the invitation before sending it.
@@ -201,12 +240,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
       .eq('id', invitation.id);
 
-    log('ACTIVATE_SUCCESS', { userId, salonId: invitation.salon_id, bookingEligible });
+    log('ACTIVATE_SUCCESS', { userId, salonId: invitation.salon_id, bookingEligible, plansLinked });
 
     return res.status(200).json({
       code: 'ACTIVATION_COMPLETE',
       success: true,
       booking_eligible: bookingEligible,
+      plans_linked: plansLinked,
       message: bookingEligible
         ? 'Account activated successfully. You can now book appointments.'
         : 'Account activated, but booking is not yet available. Your salon needs to complete setup on their end.',

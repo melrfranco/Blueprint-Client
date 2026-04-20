@@ -57,7 +57,45 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
 
       if (plansError) throw plansError;
 
-      const hydratedPlans: GeneratedPlan[] = (plansData || []).map((row: any) => {
+      // Self-heal: if the RLS-gated query returned zero plans, call the
+      // server link endpoint, which uses the service role to re-link any
+      // orphaned plans from accepted invitations and returns the authoritative
+      // list. Fixes users whose activation predates the multi-plan link fix,
+      // or whose plans are missing salon_id / client_user_id in the DB.
+      let plansRows = plansData || [];
+      if (plansRows.length === 0) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const accessToken = session?.access_token;
+          if (accessToken) {
+            const linkRes = await fetch('/api/client/link-plans', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${accessToken}`,
+              },
+            });
+            if (linkRes.ok) {
+              const linkJson = await linkRes.json();
+              if (Array.isArray(linkJson.plans) && linkJson.plans.length > 0) {
+                plansRows = linkJson.plans;
+                console.info(
+                  '[ClientData] Self-heal linked plans:',
+                  linkJson.plans_linked,
+                  '| now owning:',
+                  linkJson.plans_owned,
+                );
+              }
+            } else {
+              console.warn('[ClientData] link-plans endpoint returned', linkRes.status);
+            }
+          }
+        } catch (e) {
+          console.warn('[ClientData] link-plans self-heal failed:', e);
+        }
+      }
+
+      const hydratedPlans: GeneratedPlan[] = plansRows.map((row: any) => {
         const blob = row.plan_data || {};
         return {
           ...blob,

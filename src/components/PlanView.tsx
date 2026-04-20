@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useClientData } from '../contexts/ClientDataContext';
 import { useAuth } from '../contexts/AuthContext';
+import { apiClient } from '../services/apiClient';
 import { BookingFlow } from './BookingFlow';
 import { CalendarIcon, StarIcon, GiftIcon, CheckCircleIcon } from './icons';
 import type { Service, PlanAppointment } from '../types';
@@ -19,10 +20,12 @@ function formatDateLong(date: Date): string {
 }
 
 export const PlanView: React.FC = () => {
-  const { plans, services, bookings, loading } = useClientData();
+  const { plans, services, bookings, loading, refresh } = useClientData();
   const { bookingEligible } = useAuth();
   const [bookingService, setBookingService] = useState<Service | null>(null);
   const [planIdForBooking, setPlanIdForBooking] = useState<string | undefined>(undefined);
+  const [acceptingMembership, setAcceptingMembership] = useState(false);
+  const [acceptError, setAcceptError] = useState<string | null>(null);
 
   const activePlan = useMemo(
     () => plans.find((p) => p.status === 'active') || plans[0],
@@ -48,6 +51,20 @@ export const PlanView: React.FC = () => {
     }
     return s;
   }, [bookings, activePlan?.id]);
+
+  const handleAcceptMembership = async () => {
+    if (!activePlan) return;
+    setAcceptingMembership(true);
+    setAcceptError(null);
+    try {
+      await apiClient.acceptMembership(activePlan.id);
+      await refresh();
+    } catch (err) {
+      setAcceptError(err instanceof Error ? err.message : 'Failed to accept membership');
+    } finally {
+      setAcceptingMembership(false);
+    }
+  };
 
   if (bookingService) {
     return (
@@ -144,6 +161,23 @@ export const PlanView: React.FC = () => {
                     ? 'You are an active member. Enjoy your perks and discounts.'
                     : 'Your salon has invited you to join their membership program.'}
                 </p>
+
+                {membershipIsOffered && (
+                  <div className="mt-4 space-y-2">
+                    {acceptError && (
+                      <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-2xl">
+                        <p className="bp-caption text-destructive">{acceptError}</p>
+                      </div>
+                    )}
+                    <button
+                      onClick={handleAcceptMembership}
+                      disabled={acceptingMembership}
+                      className="bp-button bp-button-primary w-full disabled:opacity-60"
+                    >
+                      {acceptingMembership ? 'Accepting...' : 'Accept Membership'}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>

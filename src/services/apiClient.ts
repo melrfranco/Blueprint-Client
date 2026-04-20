@@ -97,6 +97,26 @@ export const apiClient = {
     return data;
   },
 
+  // ── Membership ──
+
+  async acceptMembership(planId: string): Promise<{ code: string; message: string }> {
+    const token = await getAccessToken();
+    const response = await fetch(`${API_BASE}/client/accept-membership`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ plan_id: planId }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.message || 'Failed to accept membership');
+    }
+    return data;
+  },
+
   // ── Auth ──
 
   async login(): Promise<void> {

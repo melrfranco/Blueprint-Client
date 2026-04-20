@@ -244,7 +244,7 @@ export const PlanView: React.FC = () => {
                                 setBookingService(bookable);
                                 setPlanIdForBooking(activePlan.id);
                               }}
-                              className="bp-button bp-button-primary bp-shape-pill text-xs px-3 py-1"
+                              className="bp-button bp-button-primary rounded-full text-xs px-3 py-1"
                             >
                               Book This
                             </button>

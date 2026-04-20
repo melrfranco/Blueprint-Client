@@ -91,7 +91,7 @@ export const ServicesTab: React.FC = () => {
                         <button
                           onClick={() => canBook && setBookingService(service)}
                           disabled={!canBook}
-                          className="bp-button bp-button-primary bp-shape-pill text-xs px-3 py-1 flex-shrink-0 disabled:opacity-50"
+                          className="bp-button bp-button-primary rounded-full text-xs px-3 py-1 flex-shrink-0 disabled:opacity-50"
                         >
                           Book
                         </button>

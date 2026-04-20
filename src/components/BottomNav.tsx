@@ -1,5 +1,5 @@
 import React from 'react';
-import { HomeIcon, CalendarIcon, ServicesIcon, ProfileIcon } from './icons';
+import { HomeIcon, CalendarIcon, ServicesIcon, ProfileIcon, GiftIcon } from './icons';
 
 interface BottomNavProps {
   activeTab: string;
@@ -8,7 +8,8 @@ interface BottomNavProps {
 
 const NAV_ITEMS = [
   { id: 'home', label: 'Home', icon: HomeIcon },
-  { id: 'appointments', label: 'Appointments', icon: CalendarIcon },
+  { id: 'plan', label: 'Plan', icon: GiftIcon },
+  { id: 'appointments', label: 'Visits', icon: CalendarIcon },
   { id: 'services', label: 'Services', icon: ServicesIcon },
   { id: 'profile', label: 'Profile', icon: ProfileIcon },
 ];

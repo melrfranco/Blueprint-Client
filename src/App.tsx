@@ -7,6 +7,9 @@ import { LoginScreen } from './components/LoginScreen';
 import { ActivationScreen } from './components/ActivationScreen';
 import { ClaimCodeEntry } from './components/ClaimCodeEntry';
 import { ClientDashboard } from './components/ClientDashboard';
+import { AppointmentsTab } from './components/AppointmentsTab';
+import { ServicesTab } from './components/ServicesTab';
+import { PlanView } from './components/PlanView';
 import { ProfileSettings } from './components/ProfileSettings';
 import { BottomNav } from './components/BottomNav';
 
@@ -53,35 +56,17 @@ const AuthenticatedShell: React.FC = () => {
   const renderContent = () => {
     switch (activeTab) {
       case 'home':
-        return <ClientDashboard />;
+        return <ClientDashboard onNavigate={(t) => setActiveTab(t)} />;
+      case 'plan':
+        return <PlanView />;
       case 'appointments':
-        return (
-          <div className="bp-page">
-            <h1 className="bp-page-title">Appointments</h1>
-            <p className="bp-subtitle mb-6">Your upcoming and past appointments</p>
-            <div className="bp-card bp-card-padding-md">
-              <p className="bp-body-sm text-muted-foreground text-center py-8">
-                Appointments coming soon
-              </p>
-            </div>
-          </div>
-        );
+        return <AppointmentsTab />;
       case 'services':
-        return (
-          <div className="bp-page">
-            <h1 className="bp-page-title">Services</h1>
-            <p className="bp-subtitle mb-6">Browse available services</p>
-            <div className="bp-card bp-card-padding-md">
-              <p className="bp-body-sm text-muted-foreground text-center py-8">
-                Services catalog coming soon
-              </p>
-            </div>
-          </div>
-        );
+        return <ServicesTab />;
       case 'profile':
         return <ProfileSettings />;
       default:
-        return <ClientDashboard />;
+        return <ClientDashboard onNavigate={(t) => setActiveTab(t)} />;
     }
   };
 

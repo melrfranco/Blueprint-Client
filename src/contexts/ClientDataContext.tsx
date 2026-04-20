@@ -45,25 +45,69 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
         throw new Error('Failed to load services');
       }
       const servicesData = await servicesRes.json();
-      setServices((servicesData || []) as Service[]);
+      const loadedServices = (servicesData || []) as Service[];
+      setServices(loadedServices);
 
       // Load plans for this client (RLS enforces client_user_id = auth.uid())
+      // Plans store rich data in plan_data jsonb column (written by Pro)
       const { data: plansData, error: plansError } = await supabase
         .from('plans')
-        .select('*')
+        .select('id, status, plan_data, created_at')
         .eq('client_user_id', user.id);
 
       if (plansError) throw plansError;
-      setPlans((plansData || []) as GeneratedPlan[]);
+
+      const hydratedPlans: GeneratedPlan[] = (plansData || []).map((row: any) => {
+        const blob = row.plan_data || {};
+        return {
+          ...blob,
+          id: row.id,
+          status: row.status || blob.status || 'draft',
+          createdAt: blob.createdAt ? new Date(blob.createdAt) : new Date(row.created_at),
+          appointments: Array.isArray(blob.appointments)
+            ? blob.appointments.map((a: any) => ({ ...a, date: a.date ? new Date(a.date) : new Date() }))
+            : [],
+          totalCost: typeof blob.totalCost === 'number' ? blob.totalCost : 0,
+          membershipStatus: blob.membershipStatus || 'none',
+          client: blob.client || { id: user.id, name: '', avatarUrl: '' },
+        } as GeneratedPlan;
+      });
+      setPlans(hydratedPlans);
 
       // Load bookings for this client (RLS enforces client_user_id = auth.uid())
       const { data: bookingsData, error: bookingsError } = await supabase
         .from('bookings')
-        .select('*')
-        .eq('client_user_id', user.id);
+        .select('id, plan_id, service_variation_id, team_member_id, status, start_at, end_at')
+        .eq('client_user_id', user.id)
+        .order('start_at', { ascending: true });
 
       if (bookingsError) throw bookingsError;
-      setBookings((bookingsData || []) as BookingRecord[]);
+
+      // Decorate bookings with display-friendly service info
+      const serviceByVariation = new Map(
+        loadedServices
+          .filter((s) => !!s.variation_id)
+          .map((s) => [s.variation_id!, s]),
+      );
+      const decoratedBookings: BookingRecord[] = (bookingsData || []).map((row: any) => {
+        const svc = serviceByVariation.get(row.service_variation_id);
+        return {
+          id: row.id,
+          plan_id: row.plan_id,
+          service_variation_id: row.service_variation_id,
+          team_member_id: row.team_member_id,
+          status: row.status,
+          start_at: row.start_at,
+          end_at: row.end_at,
+          service_name: svc
+            ? svc.variation_name
+              ? `${svc.name} — ${svc.variation_name}`
+              : svc.name
+            : 'Service',
+          service_duration: svc?.duration,
+        };
+      });
+      setBookings(decoratedBookings);
 
     } catch (err) {
       console.error('Client data load error:', err);

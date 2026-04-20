@@ -60,11 +60,15 @@ export interface GeneratedPlan {
 
 export interface BookingRecord {
   id: string;
-  planId: string;
-  providerBookingId?: string;  // opaque reference, never displayed
-  startAt: string;
+  plan_id: string | null;
+  service_variation_id: string;
+  team_member_id?: string | null;
   status: string;
-  services: { name: string }[];
+  start_at: string;
+  end_at?: string | null;
+  // Derived client-side from services list for display
+  service_name?: string;
+  service_duration?: number;
 }
 
 export interface Salon {

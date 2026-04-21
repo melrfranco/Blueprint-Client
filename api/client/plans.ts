@@ -87,27 +87,36 @@ export default async function handler(req: any, res: any) {
 
   // ── Fetch plans by collected IDs ──
   let plans: any[] = [];
+  const queryErrors: string[] = [];
 
   // By plan IDs from invitations
   if (planIds.size > 0) {
-    const { data: invPlans } = await supabaseAdmin
+    const { data: invPlans, error: invPlansErr } = await supabaseAdmin
       .from('plans')
-      .select('id, status, plan_data, created_at, salon_id, client_id')
+      .select('*')
       .in('id', Array.from(planIds))
       .order('created_at', { ascending: false });
+    if (invPlansErr) {
+      console.log('[plans] invPlans query error:', invPlansErr.message);
+      queryErrors.push('invPlans: ' + invPlansErr.message);
+    }
     if (invPlans) plans.push(...invPlans);
   }
 
   // By client IDs from provider mapping
   if (clientIds.size > 0) {
-    const { data: clientPlans } = await supabaseAdmin
+    const { data: clientPlans, error: clientPlansErr } = await supabaseAdmin
       .from('plans')
-      .select('id, status, plan_data, created_at, salon_id, client_id')
+      .select('*')
       .in('client_id', Array.from(clientIds))
       .order('created_at', { ascending: false });
+    if (clientPlansErr) {
+      console.log('[plans] clientPlans query error:', clientPlansErr.message);
+      queryErrors.push('clientPlans: ' + clientPlansErr.message);
+    }
     if (clientPlans) {
       for (const p of clientPlans) {
-        if (!planIds.has(p.id)) plans.push(p); // deduplicate
+        if (!planIds.has(p.id)) plans.push(p);
       }
     }
   }
@@ -116,10 +125,12 @@ export default async function handler(req: any, res: any) {
   if (plans.length === 0) {
     const { data: directPlans, error: directErr } = await supabaseAdmin
       .from('plans')
-      .select('id, status, plan_data, created_at, salon_id, client_id')
+      .select('*')
       .eq('client_user_id', userId)
       .order('created_at', { ascending: false });
-
+    if (directErr) {
+      queryErrors.push('direct: ' + directErr.message);
+    }
     if (!directErr && directPlans) {
       plans = directPlans;
     }
@@ -138,6 +149,7 @@ export default async function handler(req: any, res: any) {
       mappingsFound: mappings?.length || 0,
       clientIdsFromMappings: Array.from(clientIds),
       plansFetched: plans.length,
+      queryErrors,
     },
   });
 }

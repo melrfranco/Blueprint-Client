@@ -105,41 +105,30 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => {
     let didFinish = false;
 
-    const initializeAuth = async () => {
-      try {
-        console.log('[Auth] Initializing...');
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) {
-          console.error('[Auth] getSession error:', sessionError.message);
-        }
-        await handleSession(session);
-        console.log('[Auth] Initialization complete, user:', session?.user?.id || 'none');
-      } catch (error) {
-        console.error('[Auth] Initialization error:', error);
-      } finally {
-        didFinish = true;
-        setAuthInitialized(true);
-      }
-    };
-
-    initializeAuth();
-
-    // Safety timeout: if getSession hangs, unblock the UI
+    // Safety timeout: if INITIAL_SESSION event never fires, unblock the UI
     const timeout = setTimeout(() => {
       if (!didFinish) {
-        console.warn('[Auth] Initialization timed out after 4s — unblocking UI');
+        console.warn('[Auth] No INITIAL_SESSION event after 4s — unblocking UI');
         setAuthInitialized(true);
       }
     }, 4000);
 
-    // Listen for all auth changes (login, logout, token refresh)
-    // The session is provided directly — no need to call getSession()
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      console.log('[Auth] State change:', _event);
+    // Subscribe to auth state changes — Supabase v2 fires INITIAL_SESSION
+    // immediately with the current session. No need to call getSession()
+    // at all, which avoids Web Lock contention / deadlocks.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('[Auth] State change:', event, session?.user?.id || 'no user');
+      didFinish = true;
+      clearTimeout(timeout);
+
       if (session?.access_token) {
         setAccessToken(session.access_token);
         setCachedAccessToken(session.access_token);
+      } else {
+        setAccessToken(null);
+        setCachedAccessToken(null);
       }
+
       await handleSession(session);
       setAuthInitialized(true);
     });

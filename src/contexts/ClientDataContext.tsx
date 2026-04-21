@@ -79,6 +79,7 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const accessToken = session?.access_token;
+        console.log('[ClientData] Session for plans fetch:', accessToken ? 'has token' : 'NO TOKEN');
         if (accessToken) {
           const plansRes = await fetch('/api/client/plans', {
             method: 'GET',
@@ -87,20 +88,25 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
               Authorization: `Bearer ${accessToken}`,
             },
           });
+          console.log('[ClientData] /api/client/plans status:', plansRes.status);
           if (plansRes.ok) {
             const plansJson = await plansRes.json();
+            console.log('[ClientData] Plans response:', JSON.stringify(plansJson).slice(0, 500));
             // Endpoint returns single `plan` (most recent), wrap in array
             plansRows = plansJson.plan ? [plansJson.plan] : [];
             console.log('[ClientData] Plan from server:', plansRows.length ? 'found' : 'none');
           } else {
-            console.warn('[ClientData] /api/client/plans returned', plansRes.status);
+            const errText = await plansRes.text().catch(() => '');
+            console.warn('[ClientData] /api/client/plans returned', plansRes.status, errText.slice(0, 200));
           }
         }
       } catch (e) {
         console.warn('[ClientData] Plans fetch failed:', e);
       }
 
-      setPlans(hydratePlanRows(plansRows));
+      const hydratedPlans = hydratePlanRows(plansRows);
+      console.log('[ClientData] Hydrated plans:', hydratedPlans.length, hydratedPlans.map(p => ({ id: p.id, status: p.status, appts: p.appointments?.length })));
+      setPlans(hydratedPlans);
 
       // Load bookings for this client
       // Bookings table has client_user_id (created by our activation flow),

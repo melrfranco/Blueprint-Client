@@ -70,6 +70,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   useEffect(() => {
+    let didFinish = false;
+
     const initializeAuth = async () => {
       try {
         console.log('[Auth] Initializing...');
@@ -95,12 +97,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       } catch (error) {
         console.error('[Auth] Initialization error:', error);
       } finally {
+        didFinish = true;
         setAuthInitialized(true);
         console.log('[Auth] Initialization complete');
       }
     };
 
     initializeAuth();
+
+    // Safety timeout: if getSession hangs (lock contention), unblock the UI
+    const timeout = setTimeout(() => {
+      if (!didFinish) {
+        console.warn('[Auth] Initialization timed out after 5s — unblocking UI');
+        setAuthInitialized(true);
+      }
+    }, 5000);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
@@ -122,7 +133,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setAuthInitialized(true);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, [resolveClientUser, refreshMembership]);
 
   const login = async (email: string, password: string) => {

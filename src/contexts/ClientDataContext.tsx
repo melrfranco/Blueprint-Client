@@ -53,17 +53,11 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
       setServices(loadedServices);
       console.log('[ClientData] Services loaded:', loadedServices.length);
 
-      // Load plans for this client (RLS enforces client_user_id = auth.uid())
-      // Plans store rich data in plan_data jsonb column (written by Pro)
-      const { data: plansData, error: plansError } = await supabase
-        .from('plans')
-        .select('id, status, plan_data, created_at')
-        .eq('client_user_id', user.id);
-
-      if (plansError) throw plansError;
-
-      // Hydrate plans from the RLS-gated query first (may be empty)
-      const plansRows = plansData || [];
+      // Load plans via server endpoint (bypasses RLS and missing-column issues).
+      // The Pro app writes client_id (FK to clients table), not client_user_id.
+      // The client_user_id column may not exist in the DB yet, causing 400 errors
+      // on direct Supabase queries. The server endpoint resolves plans via
+      // clients.supabase_user_id → plans.client_id using the service role.
       const hydratePlanRows = (rows: any[]): GeneratedPlan[] =>
         rows.map((row: any) => {
           const blob = row.plan_data || {};
@@ -81,65 +75,47 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
           } as GeneratedPlan;
         });
 
-      setPlans(hydratePlanRows(plansRows));
-      console.log('[ClientData] Plans from RLS query:', plansRows.length);
-
-      // Self-heal (non-blocking): if the RLS-gated query returned zero plans,
-      // fire off a call to the server link-plans endpoint in the background.
-      // When it resolves, update the plans state. A 5-second AbortController
-      // timeout prevents the request from hanging indefinitely.
-      if (plansRows.length === 0) {
-        (async () => {
-          try {
-            const { data: { session } } = await supabase.auth.getSession();
-            const accessToken = session?.access_token;
-            if (!accessToken) return;
-
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 5000);
-
-            const linkRes = await fetch('/api/client/link-plans', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${accessToken}`,
-              },
-              signal: controller.signal,
-            });
-            clearTimeout(timeout);
-
-            if (linkRes.ok) {
-              const linkJson = await linkRes.json();
-              if (Array.isArray(linkJson.plans) && linkJson.plans.length > 0) {
-                setPlans(hydratePlanRows(linkJson.plans));
-                console.info(
-                  '[ClientData] Self-heal linked plans:',
-                  linkJson.plans_linked,
-                  '| now owning:',
-                  linkJson.plans_owned,
-                );
-              }
-            } else {
-              console.warn('[ClientData] link-plans endpoint returned', linkRes.status);
-            }
-          } catch (e: any) {
-            if (e?.name === 'AbortError') {
-              console.warn('[ClientData] link-plans self-heal timed out (5s)');
-            } else {
-              console.warn('[ClientData] link-plans self-heal failed:', e);
-            }
+      let plansRows: any[] = [];
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const accessToken = session?.access_token;
+        if (accessToken) {
+          const plansRes = await fetch('/api/client/plans', {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${accessToken}`,
+            },
+          });
+          if (plansRes.ok) {
+            const plansJson = await plansRes.json();
+            plansRows = plansJson.plans || [];
+            console.log('[ClientData] Plans from server:', plansRows.length);
+          } else {
+            console.warn('[ClientData] /api/client/plans returned', plansRes.status);
           }
-        })();
+        }
+      } catch (e) {
+        console.warn('[ClientData] Plans fetch failed:', e);
       }
 
-      // Load bookings for this client (RLS enforces client_user_id = auth.uid())
-      const { data: bookingsData, error: bookingsError } = await supabase
+      setPlans(hydratePlanRows(plansRows));
+
+      // Load bookings for this client
+      // Bookings table has client_user_id (created by our activation flow),
+      // but be resilient in case the column is missing.
+      let bookingsData: any[] = [];
+      const { data: bData, error: bookingsError } = await supabase
         .from('bookings')
         .select('id, plan_id, service_variation_id, team_member_id, status, start_at, end_at')
         .eq('client_user_id', user.id)
         .order('start_at', { ascending: true });
 
-      if (bookingsError) throw bookingsError;
+      if (bookingsError) {
+        console.warn('[ClientData] Bookings query error (column may not exist):', bookingsError.message);
+      } else {
+        bookingsData = bData || [];
+      }
 
       // Decorate bookings with display-friendly service info
       const serviceByVariation = new Map(

@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { supabase } from '../lib/supabase';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
+import { supabase, getCachedAccessToken } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import type { Service, MembershipTier, GeneratedPlan, BookingRecord } from '../types';
 
@@ -16,13 +16,14 @@ interface ClientDataContextType {
 const ClientDataContext = createContext<ClientDataContextType | undefined>(undefined);
 
 export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { user, isAuthenticated, membership } = useAuth();
+  const { user, isAuthenticated, membership, accessToken } = useAuth();
   const [services, setServices] = useState<Service[]>([]);
   const [membershipTiers, setMembershipTiers] = useState<MembershipTier[]>([]);
   const [plans, setPlans] = useState<GeneratedPlan[]>([]);
   const [bookings, setBookings] = useState<BookingRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasLoadedOnce = useRef(false);
 
   const refresh = useCallback(async () => {
     if (!user || !membership) {
@@ -31,17 +32,14 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
     }
 
     console.log('[ClientData] Refreshing for user:', user.id, 'salon:', membership.salon_id);
-    setLoading(true);
+    // Only show loading spinner on first load — subsequent refreshes are silent
+    if (!hasLoadedOnce.current) setLoading(true);
     setError(null);
 
     try {
       const salonId = membership.salon_id;
 
       // Load services via salon-scoped server endpoint
-      // The services table has no supabase_user_id column — salon linkage
-      // lives in metadata->>'admin_user_id' (jsonb). The server endpoint
-      // resolves salon → owner_user_id → filters by metadata, so the client
-      // never needs to know about the internal scoping mechanism.
       const servicesRes = await fetch(`/api/client/services?salon_id=${encodeURIComponent(salonId)}`, {
         headers: { 'Content-Type': 'application/json' },
       });
@@ -53,11 +51,7 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
       setServices(loadedServices);
       console.log('[ClientData] Services loaded:', loadedServices.length);
 
-      // Load plans via server endpoint (bypasses RLS and missing-column issues).
-      // The Pro app writes client_id (FK to clients table), not client_user_id.
-      // The client_user_id column may not exist in the DB yet, causing 400 errors
-      // on direct Supabase queries. The server endpoint resolves plans via
-      // clients.supabase_user_id → plans.client_id using the service role.
+      // Hydrate plan rows from the server response
       const hydratePlanRows = (rows: any[]): GeneratedPlan[] =>
         rows.map((row: any) => {
           const blob = row.plan_data || {};
@@ -75,48 +69,35 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
           } as GeneratedPlan;
         });
 
+      // Load plans — use cached access token from AuthContext (no getSession() call)
       let plansRows: any[] = [];
-      try {
-        // Race getSession against a timeout to avoid hanging on lock contention
-        const sessionResult = await Promise.race([
-          supabase.auth.getSession(),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
-        ]);
-        const accessToken = sessionResult && 'data' in sessionResult
-          ? (sessionResult as any).data?.session?.access_token
-          : null;
-        console.log('[ClientData] Session for plans fetch:', accessToken ? 'has token' : 'NO TOKEN');
-        if (accessToken) {
+      const token = accessToken || getCachedAccessToken();
+      console.log('[ClientData] Token for plans fetch:', token ? 'has token' : 'NO TOKEN');
+      if (token) {
+        try {
           const plansRes = await fetch('/api/client/plans', {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
-              Authorization: `Bearer ${accessToken}`,
+              Authorization: `Bearer ${token}`,
             },
           });
           console.log('[ClientData] /api/client/plans status:', plansRes.status);
           if (plansRes.ok) {
             const plansJson = await plansRes.json();
-            console.log('[ClientData] Plans response:', JSON.stringify(plansJson).slice(0, 500));
-            // Endpoint returns single `plan` (most recent), wrap in array
             plansRows = plansJson.plan ? [plansJson.plan] : [];
             console.log('[ClientData] Plan from server:', plansRows.length ? 'found' : 'none');
           } else {
-            const errText = await plansRes.text().catch(() => '');
-            console.warn('[ClientData] /api/client/plans returned', plansRes.status, errText.slice(0, 200));
+            console.warn('[ClientData] /api/client/plans returned', plansRes.status);
           }
+        } catch (e) {
+          console.warn('[ClientData] Plans fetch failed:', e);
         }
-      } catch (e) {
-        console.warn('[ClientData] Plans fetch failed:', e);
       }
 
-      const hydratedPlans = hydratePlanRows(plansRows);
-      console.log('[ClientData] Hydrated plans:', hydratedPlans.length, hydratedPlans.map(p => ({ id: p.id, status: p.status, appts: p.appointments?.length })));
-      setPlans(hydratedPlans);
+      setPlans(hydratePlanRows(plansRows));
 
       // Load bookings for this client
-      // Bookings table has client_user_id (created by our activation flow),
-      // but be resilient in case the column is missing.
       let bookingsData: any[] = [];
       const { data: bData, error: bookingsError } = await supabase
         .from('bookings')
@@ -125,7 +106,7 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
         .order('start_at', { ascending: true });
 
       if (bookingsError) {
-        console.warn('[ClientData] Bookings query error (column may not exist):', bookingsError.message);
+        console.warn('[ClientData] Bookings query error:', bookingsError.message);
       } else {
         bookingsData = bData || [];
       }
@@ -155,6 +136,7 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
         };
       });
       setBookings(decoratedBookings);
+      hasLoadedOnce.current = true;
 
     } catch (err) {
       console.error('Client data load error:', err);
@@ -162,19 +144,20 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
     } finally {
       setLoading(false);
     }
-  }, [user, membership]);
+  }, [user, membership, accessToken]);
 
   useEffect(() => {
-    if (isAuthenticated && membership) {
+    if (isAuthenticated && membership && accessToken) {
       refresh();
-    } else {
+    } else if (!isAuthenticated) {
       setServices([]);
       setMembershipTiers([]);
       setPlans([]);
       setBookings([]);
       setLoading(false);
+      hasLoadedOnce.current = false;
     }
-  }, [isAuthenticated, membership, refresh]);
+  }, [isAuthenticated, membership, accessToken, refresh]);
 
   return (
     <ClientDataContext.Provider value={{ services, membershipTiers, plans, bookings, loading, error, refresh }}>

@@ -7,7 +7,49 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Resilient storage that handles quota errors gracefully.
+// The Supabase JWT can be oversized (e.g. base64 avatar in user_metadata)
+// which causes localStorage quota errors and breaks auth completely.
+const resilientStorage = {
+  getItem: (key: string): string | null => {
+    try { return localStorage.getItem(key); } catch { /* quota or access error */ }
+    try { return sessionStorage.getItem(key); } catch { /* fallback also failed */ }
+    return null;
+  },
+  setItem: (key: string, value: string): void => {
+    try { localStorage.setItem(key, value); return; } catch { /* quota exceeded */ }
+    // Clear stale supabase keys and retry
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k?.startsWith('sb-')) localStorage.removeItem(k);
+      }
+      localStorage.setItem(key, value);
+      return;
+    } catch { /* still failed */ }
+    // Last resort: sessionStorage (lost on tab close, but at least works)
+    try { sessionStorage.setItem(key, value); } catch { /* give up silently */ }
+  },
+  removeItem: (key: string): void => {
+    try { localStorage.removeItem(key); } catch { /* ignore */ }
+    try { sessionStorage.removeItem(key); } catch { /* ignore */ }
+  },
+};
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    storage: resilientStorage,
+    persistSession: true,
+    detectSessionInUrl: true,
+  },
+});
+
+// ── Cached access token ──────────────────────────────────
+// Updated by AuthContext on every auth state change.
+// Other code (ClientDataContext) reads this instead of calling getSession().
+let _cachedAccessToken: string | null = null;
+export function setCachedAccessToken(token: string | null) { _cachedAccessToken = token; }
+export function getCachedAccessToken(): string | null { return _cachedAccessToken; }
 
 export function getSupabaseConfig() {
   return {

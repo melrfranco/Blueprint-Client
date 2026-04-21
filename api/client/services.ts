@@ -73,5 +73,12 @@ export default async function handler(req: any, res: any) {
     variation_name: s.metadata?.variation_name || null,
   }));
 
-  return res.status(200).json(sanitized);
+  return res.status(200).json({
+    services: sanitized,
+    _debug: {
+      salon_id,
+      owner_user_id: salon.owner_user_id,
+      rawServicesFound: services?.length || 0,
+    },
+  });
 }

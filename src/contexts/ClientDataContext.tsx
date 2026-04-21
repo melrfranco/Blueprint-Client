@@ -46,10 +46,10 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
       if (!servicesRes.ok) {
         throw new Error('Failed to load services');
       }
-      const servicesData = await servicesRes.json();
-      const loadedServices = (servicesData || []) as Service[];
+      const servicesJson = await servicesRes.json();
+      const loadedServices = (servicesJson.services || servicesJson || []) as Service[];
       setServices(loadedServices);
-      console.log('[ClientData] Services loaded:', loadedServices.length);
+      console.log('[ClientData] Services loaded:', loadedServices.length, 'debug:', servicesJson._debug);
 
       // Hydrate plan rows from the server response
       const hydratePlanRows = (rows: any[]): GeneratedPlan[] =>

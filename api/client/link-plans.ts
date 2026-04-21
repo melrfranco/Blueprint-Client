@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+
 import { createClient } from '@supabase/supabase-js';
 import { log } from '../lib/logger.js';
 
@@ -20,7 +20,7 @@ import { log } from '../lib/logger.js';
  *   - Any case where the activation succeeded but the client's session can't
  *     see the plan via RLS (e.g., uid mismatch from legacy data).
  */
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     return res.status(405).json({ code: 'METHOD_NOT_ALLOWED', message: 'Method not allowed' });
   }

@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+
 import { createClient } from '@supabase/supabase-js';
 import { log } from '../lib/logger.js';
 
@@ -10,7 +10,7 @@ import { log } from '../lib/logger.js';
  * authenticated client. Requires a valid Supabase JWT. Only accepts the
  * request if plan.client_user_id matches the verified user.id.
  */
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     return res.status(405).json({ code: 'METHOD_NOT_ALLOWED', message: 'Method not allowed' });
   }

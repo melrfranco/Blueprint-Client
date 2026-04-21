@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+
 import { createClient } from '@supabase/supabase-js';
 
 /**
@@ -17,7 +17,7 @@ import { createClient } from '@supabase/supabase-js';
  *
  * Returns only the most recently created plan (the one the stylist made).
  */
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
   if (req.method !== 'GET') {
     return res.status(405).json({ code: 'METHOD_NOT_ALLOWED', message: 'Method not allowed' });
   }

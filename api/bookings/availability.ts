@@ -1,9 +1,9 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+
 import { authenticateClient } from '../lib/auth-helpers';
 import { resolveProvider } from '../lib/provider-factory';
 import { log } from '../lib/logger';
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
   if (req.method !== 'GET') {
     return res.status(405).json({ message: 'Method not allowed' });
   }

@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+
 import { createClient } from '@supabase/supabase-js';
 import { createHash } from 'crypto';
 import { log } from '../lib/logger.js';
@@ -6,7 +6,7 @@ import { log } from '../lib/logger.js';
 const supabaseUrl = process.env.VITE_SUPABASE_URL!;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
   if (!supabaseUrl || !serviceRoleKey) {
     return res.status(500).json({ message: 'Server configuration error' });
   }

@@ -41,8 +41,10 @@ export default async function handler(req: any, res: any) {
     .eq('id', salon_id)
     .maybeSingle();
 
+  console.log('[services] salon_id:', salon_id, 'salon:', salon, 'error:', salonError?.message);
+
   if (salonError || !salon?.owner_user_id) {
-    return res.status(404).json({ message: 'Salon not found' });
+    return res.status(404).json({ message: 'Salon not found', _debug: { salon_id, salonError: salonError?.message } });
   }
 
   // Fetch services where metadata->>'admin_user_id' matches the salon owner
@@ -52,8 +54,10 @@ export default async function handler(req: any, res: any) {
     .eq('source', 'square')
     .contains('metadata', { admin_user_id: salon.owner_user_id });
 
+  console.log('[services] owner_user_id:', salon.owner_user_id, 'services found:', services?.length || 0, 'error:', servicesError?.message);
+
   if (servicesError) {
-    return res.status(500).json({ code: 'INTERNAL_ERROR', message: 'Failed to load services' });
+    return res.status(500).json({ code: 'INTERNAL_ERROR', message: 'Failed to load services', _debug: { servicesError: servicesError.message } });
   }
 
   // Map metadata fields to provider-agnostic names for the client

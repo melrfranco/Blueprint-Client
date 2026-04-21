@@ -89,8 +89,9 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
           });
           if (plansRes.ok) {
             const plansJson = await plansRes.json();
-            plansRows = plansJson.plans || [];
-            console.log('[ClientData] Plans from server:', plansRows.length);
+            // Endpoint returns single `plan` (most recent), wrap in array
+            plansRows = plansJson.plan ? [plansJson.plan] : [];
+            console.log('[ClientData] Plan from server:', plansRows.length ? 'found' : 'none');
           } else {
             console.warn('[ClientData] /api/client/plans returned', plansRes.status);
           }

@@ -4,17 +4,18 @@ import { createClient } from '@supabase/supabase-js';
 /**
  * GET /api/client/plans
  *
- * Returns all plans for the authenticated client user.
- * Uses the service role to bypass RLS and resolves plans via
- * the `clients` table (client.supabase_user_id = auth.uid()),
- * which is how the Pro app links plans to users.
+ * Returns the plan for the authenticated client user.
+ * Uses the service role to bypass RLS.
  *
- * This endpoint exists because:
- *   - The `plans` table may not have a `client_user_id` column
- *     (the migration to add it may not have been run).
- *   - The Pro app writes `client_id` (FK to `clients` table),
- *     not `client_user_id` (FK to `auth.users`).
- *   - RLS policy referencing a non-existent column causes 400 errors.
+ * Linkage paths (tried in order):
+ *   1. client_invitations.accepted_user_id = userId → plan_id
+ *      (Direct: the invitation references the plan created for this client)
+ *   2. client_provider_mappings.user_id = userId → provider_customer_id
+ *      → clients.external_id = provider_customer_id → plans.client_id
+ *      (Square customer ID links the Pro client record to this user)
+ *   3. plans.client_user_id = userId (if migration was run)
+ *
+ * Returns only the most recently created plan (the one the stylist made).
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
@@ -34,7 +35,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   const token = authHeader.slice(7);
 
-  // Verify JWT
   const supabaseAnon = createClient(supabaseUrl, anonKey);
   const { data: userData, error: authError } = await supabaseAnon.auth.getUser(token);
   if (authError || !userData?.user) {
@@ -43,44 +43,82 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const userId = userData.user.id;
 
   const supabaseAdmin = createClient(supabaseUrl, serviceKey);
+  const planIds = new Set<string>();
+  const clientIds = new Set<string>();
 
-  // Strategy 1: Try client_user_id column (if it exists after migration)
-  // Strategy 2: Fall back to resolving via clients.supabase_user_id → plans.client_id
-  let plans: any[] = [];
+  // ── Path 1: Via accepted invitations ──
+  const { data: invitations } = await supabaseAdmin
+    .from('client_invitations')
+    .select('plan_id, salon_id')
+    .eq('accepted_user_id', userId);
 
-  // Try direct client_user_id lookup first
-  const { data: directPlans, error: directErr } = await supabaseAdmin
-    .from('plans')
-    .select('id, status, plan_data, created_at, salon_id, client_id, client_user_id')
-    .eq('client_user_id', userId);
+  for (const inv of invitations || []) {
+    if (inv.plan_id) planIds.add(inv.plan_id);
+  }
 
-  if (!directErr && directPlans && directPlans.length > 0) {
-    plans = directPlans;
-  } else {
-    // Column may not exist or no rows — resolve via clients table
-    // Find the client row(s) for this auth user
+  // ── Path 2: Via provider customer mapping → clients.external_id ──
+  const { data: mappings } = await supabaseAdmin
+    .from('client_provider_mappings')
+    .select('provider_customer_id, salon_id')
+    .eq('user_id', userId);
+
+  if (mappings && mappings.length > 0) {
+    const providerIds = mappings.map((m: any) => m.provider_customer_id);
     const { data: clientRows } = await supabaseAdmin
       .from('clients')
       .select('id')
-      .eq('supabase_user_id', userId);
+      .in('external_id', providerIds);
 
-    if (clientRows && clientRows.length > 0) {
-      const clientIds = clientRows.map((c: any) => c.id);
-      // Fetch all plans for these client_ids
-      const { data: clientPlans, error: plansErr } = await supabaseAdmin
-        .from('plans')
-        .select('id, status, plan_data, created_at, salon_id, client_id, client_user_id')
-        .in('client_id', clientIds);
-
-      if (plansErr) {
-        return res.status(500).json({ code: 'FETCH_FAILED', message: 'Failed to fetch plans' });
-      }
-      plans = clientPlans || [];
+    for (const c of clientRows || []) {
+      clientIds.add(c.id);
     }
   }
 
+  // ── Fetch plans by collected IDs ──
+  let plans: any[] = [];
+
+  // By plan IDs from invitations
+  if (planIds.size > 0) {
+    const { data: invPlans } = await supabaseAdmin
+      .from('plans')
+      .select('id, status, plan_data, created_at, salon_id, client_id')
+      .in('id', Array.from(planIds))
+      .order('created_at', { ascending: false });
+    if (invPlans) plans.push(...invPlans);
+  }
+
+  // By client IDs from provider mapping
+  if (clientIds.size > 0) {
+    const { data: clientPlans } = await supabaseAdmin
+      .from('plans')
+      .select('id, status, plan_data, created_at, salon_id, client_id')
+      .in('client_id', Array.from(clientIds))
+      .order('created_at', { ascending: false });
+    if (clientPlans) {
+      for (const p of clientPlans) {
+        if (!planIds.has(p.id)) plans.push(p); // deduplicate
+      }
+    }
+  }
+
+  // ── Path 3: Direct client_user_id (if column exists) ──
+  if (plans.length === 0) {
+    const { data: directPlans, error: directErr } = await supabaseAdmin
+      .from('plans')
+      .select('id, status, plan_data, created_at, salon_id, client_id')
+      .eq('client_user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (!directErr && directPlans) {
+      plans = directPlans;
+    }
+  }
+
+  // Return only the most recent plan (the one the stylist made for this client)
+  const latestPlan = plans.length > 0 ? plans[0] : null;
+
   return res.status(200).json({
     code: 'OK',
-    plans,
+    plan: latestPlan,
   });
 }

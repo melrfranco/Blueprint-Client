@@ -77,8 +77,14 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
 
       let plansRows: any[] = [];
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const accessToken = session?.access_token;
+        // Race getSession against a timeout to avoid hanging on lock contention
+        const sessionResult = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+        ]);
+        const accessToken = sessionResult && 'data' in sessionResult
+          ? (sessionResult as any).data?.session?.access_token
+          : null;
         console.log('[ClientData] Session for plans fetch:', accessToken ? 'has token' : 'NO TOKEN');
         if (accessToken) {
           const plansRes = await fetch('/api/client/plans', {

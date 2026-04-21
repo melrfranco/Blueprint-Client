@@ -47,32 +47,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const clientIds = new Set<string>();
 
   // ── Path 1: Via accepted invitations ──
-  const { data: invitations } = await supabaseAdmin
+  const { data: invitations, error: invErr } = await supabaseAdmin
     .from('client_invitations')
-    .select('plan_id, salon_id')
+    .select('id, plan_id, salon_id, status, accepted_user_id')
     .eq('accepted_user_id', userId);
 
-  for (const inv of invitations || []) {
-    if (inv.plan_id) planIds.add(inv.plan_id);
+  console.log('[plans] Path 1 — invitations for user:', userId, 'count:', invitations?.length || 0, 'error:', invErr?.message);
+  if (invitations) {
+    for (const inv of invitations) {
+      console.log('[plans]   invitation:', inv.id, 'plan_id:', inv.plan_id, 'salon_id:', inv.salon_id, 'status:', inv.status);
+      if (inv.plan_id) planIds.add(inv.plan_id);
+    }
   }
 
   // ── Path 2: Via provider customer mapping → clients.external_id ──
-  const { data: mappings } = await supabaseAdmin
+  const { data: mappings, error: mapErr } = await supabaseAdmin
     .from('client_provider_mappings')
     .select('provider_customer_id, salon_id')
     .eq('user_id', userId);
 
+  console.log('[plans] Path 2 — provider mappings:', mappings?.length || 0, 'error:', mapErr?.message);
+
   if (mappings && mappings.length > 0) {
     const providerIds = mappings.map((m: any) => m.provider_customer_id);
-    const { data: clientRows } = await supabaseAdmin
+    console.log('[plans]   provider_customer_ids:', providerIds);
+    const { data: clientRows, error: clientErr } = await supabaseAdmin
       .from('clients')
-      .select('id')
+      .select('id, external_id, name')
       .in('external_id', providerIds);
 
+    console.log('[plans]   clients found:', clientRows?.length || 0, 'error:', clientErr?.message);
     for (const c of clientRows || []) {
+      console.log('[plans]     client:', c.id, 'external_id:', c.external_id, 'name:', c.name);
       clientIds.add(c.id);
     }
   }
+
+  console.log('[plans] Resolved planIds:', Array.from(planIds), 'clientIds:', Array.from(clientIds));
 
   // ── Fetch plans by collected IDs ──
   let plans: any[] = [];
@@ -120,5 +131,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   return res.status(200).json({
     code: 'OK',
     plan: latestPlan,
+    _debug: {
+      userId,
+      invitationsFound: invitations?.length || 0,
+      planIdsFromInvitations: Array.from(planIds),
+      mappingsFound: mappings?.length || 0,
+      clientIdsFromMappings: Array.from(clientIds),
+      plansFetched: plans.length,
+    },
   });
 }

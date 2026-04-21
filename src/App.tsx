@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, Component, ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, useSearchParams, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -12,6 +12,24 @@ import { ServicesTab } from './components/ServicesTab';
 import { PlanView } from './components/PlanView';
 import { ProfileSettings } from './components/ProfileSettings';
 import { BottomNav } from './components/BottomNav';
+
+// ── Error Boundary ──────────────────────────────────────
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="bp-page" style={{ padding: '2rem' }}>
+          <h1 className="bp-page-title" style={{ color: 'red' }}>Render Error</h1>
+          <pre style={{ whiteSpace: 'pre-wrap', fontSize: '0.8rem', marginTop: '1rem' }}>{this.state.error.message}</pre>
+          <button className="bp-button bp-button-primary" style={{ marginTop: '1rem' }} onClick={() => this.setState({ error: null })}>Retry</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const ActivationRoute: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -79,7 +97,9 @@ const AuthenticatedShell: React.FC = () => {
 };
 
 const AppContent: React.FC = () => {
-  const { isAuthenticated, authInitialized } = useAuth();
+  const { isAuthenticated, authInitialized, user, membership } = useAuth();
+
+  console.log('[AppContent]', { authInitialized, isAuthenticated, userId: user?.id, membershipSalonId: membership?.salon_id });
 
   if (!authInitialized) {
     return (
@@ -106,7 +126,9 @@ const App: React.FC = () => {
       <ThemeProvider>
         <AuthProvider>
           <ClientDataProvider>
-            <AppContent />
+            <ErrorBoundary>
+              <AppContent />
+            </ErrorBoundary>
           </ClientDataProvider>
         </AuthProvider>
       </ThemeProvider>

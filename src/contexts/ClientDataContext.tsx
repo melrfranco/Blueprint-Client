@@ -25,8 +25,12 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    if (!user || !membership) return;
+    if (!user || !membership) {
+      console.log('[ClientData] Skipping refresh — user:', !!user, 'membership:', !!membership);
+      return;
+    }
 
+    console.log('[ClientData] Refreshing for user:', user.id, 'salon:', membership.salon_id);
     setLoading(true);
     setError(null);
 
@@ -47,6 +51,7 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
       const servicesData = await servicesRes.json();
       const loadedServices = (servicesData || []) as Service[];
       setServices(loadedServices);
+      console.log('[ClientData] Services loaded:', loadedServices.length);
 
       // Load plans for this client (RLS enforces client_user_id = auth.uid())
       // Plans store rich data in plan_data jsonb column (written by Pro)
@@ -57,28 +62,56 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
 
       if (plansError) throw plansError;
 
-      // Self-heal: if the RLS-gated query returned zero plans, call the
-      // server link endpoint, which uses the service role to re-link any
-      // orphaned plans from accepted invitations and returns the authoritative
-      // list. Fixes users whose activation predates the multi-plan link fix,
-      // or whose plans are missing salon_id / client_user_id in the DB.
-      let plansRows = plansData || [];
+      // Hydrate plans from the RLS-gated query first (may be empty)
+      const plansRows = plansData || [];
+      const hydratePlanRows = (rows: any[]): GeneratedPlan[] =>
+        rows.map((row: any) => {
+          const blob = row.plan_data || {};
+          return {
+            ...blob,
+            id: row.id,
+            status: row.status || blob.status || 'draft',
+            createdAt: blob.createdAt ? new Date(blob.createdAt) : new Date(row.created_at),
+            appointments: Array.isArray(blob.appointments)
+              ? blob.appointments.map((a: any) => ({ ...a, date: a.date ? new Date(a.date) : new Date() }))
+              : [],
+            totalCost: typeof blob.totalCost === 'number' ? blob.totalCost : 0,
+            membershipStatus: blob.membershipStatus || 'none',
+            client: blob.client || { id: user.id, name: '', avatarUrl: '' },
+          } as GeneratedPlan;
+        });
+
+      setPlans(hydratePlanRows(plansRows));
+      console.log('[ClientData] Plans from RLS query:', plansRows.length);
+
+      // Self-heal (non-blocking): if the RLS-gated query returned zero plans,
+      // fire off a call to the server link-plans endpoint in the background.
+      // When it resolves, update the plans state. A 5-second AbortController
+      // timeout prevents the request from hanging indefinitely.
       if (plansRows.length === 0) {
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          const accessToken = session?.access_token;
-          if (accessToken) {
+        (async () => {
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const accessToken = session?.access_token;
+            if (!accessToken) return;
+
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 5000);
+
             const linkRes = await fetch('/api/client/link-plans', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
                 Authorization: `Bearer ${accessToken}`,
               },
+              signal: controller.signal,
             });
+            clearTimeout(timeout);
+
             if (linkRes.ok) {
               const linkJson = await linkRes.json();
               if (Array.isArray(linkJson.plans) && linkJson.plans.length > 0) {
-                plansRows = linkJson.plans;
+                setPlans(hydratePlanRows(linkJson.plans));
                 console.info(
                   '[ClientData] Self-heal linked plans:',
                   linkJson.plans_linked,
@@ -89,28 +122,15 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
             } else {
               console.warn('[ClientData] link-plans endpoint returned', linkRes.status);
             }
+          } catch (e: any) {
+            if (e?.name === 'AbortError') {
+              console.warn('[ClientData] link-plans self-heal timed out (5s)');
+            } else {
+              console.warn('[ClientData] link-plans self-heal failed:', e);
+            }
           }
-        } catch (e) {
-          console.warn('[ClientData] link-plans self-heal failed:', e);
-        }
+        })();
       }
-
-      const hydratedPlans: GeneratedPlan[] = plansRows.map((row: any) => {
-        const blob = row.plan_data || {};
-        return {
-          ...blob,
-          id: row.id,
-          status: row.status || blob.status || 'draft',
-          createdAt: blob.createdAt ? new Date(blob.createdAt) : new Date(row.created_at),
-          appointments: Array.isArray(blob.appointments)
-            ? blob.appointments.map((a: any) => ({ ...a, date: a.date ? new Date(a.date) : new Date() }))
-            : [],
-          totalCost: typeof blob.totalCost === 'number' ? blob.totalCost : 0,
-          membershipStatus: blob.membershipStatus || 'none',
-          client: blob.client || { id: user.id, name: '', avatarUrl: '' },
-        } as GeneratedPlan;
-      });
-      setPlans(hydratedPlans);
 
       // Load bookings for this client (RLS enforces client_user_id = auth.uid())
       const { data: bookingsData, error: bookingsError } = await supabase

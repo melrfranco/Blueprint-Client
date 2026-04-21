@@ -72,19 +72,31 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => {
     const initializeAuth = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        console.log('[Auth] Initializing...');
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+        if (sessionError) {
+          console.error('[Auth] getSession error:', sessionError.message);
+        }
 
         if (session?.user) {
+          console.log('[Auth] Session found, user:', session.user.id, 'role:', session.user.user_metadata?.role);
           const resolved = resolveClientUser(session.user);
           if (resolved) {
             setUser(resolved);
             await refreshMembership();
+            console.log('[Auth] Membership loaded');
+          } else {
+            console.warn('[Auth] User role is not client:', session.user.user_metadata?.role);
           }
+        } else {
+          console.log('[Auth] No active session');
         }
       } catch (error) {
-        console.error('Auth initialization error:', error);
+        console.error('[Auth] Initialization error:', error);
       } finally {
         setAuthInitialized(true);
+        console.log('[Auth] Initialization complete');
       }
     };
 

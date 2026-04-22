@@ -188,6 +188,8 @@ export const PlanView: React.FC = () => {
               {activePlan.appointments.map((appt: PlanAppointment, idx) => {
                 const primaryService = appt.services?.[0];
                 // Build a Service object directly from plan data — no catalog needed
+                // In plan data, service.id IS the Square variation ID
+                const planVariationId = primaryService?.variation_id || primaryService?.id;
                 const bookable: Service | null = primaryService ? {
                   id: primaryService.id,
                   name: primaryService.name,
@@ -195,10 +197,10 @@ export const PlanView: React.FC = () => {
                   category: primaryService.category || 'Square Import',
                   cost: primaryService.cost,
                   duration: primaryService.duration,
-                  variation_id: primaryService.variation_id,
+                  variation_id: planVariationId,
                   item_id: primaryService.item_id,
                 } : null;
-                const variationId = primaryService?.variation_id;
+                const variationId = planVariationId;
                 const alreadyBooked = variationId ? bookedVariationIds.has(variationId) : false;
 
                 return (

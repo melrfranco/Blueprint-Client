@@ -185,6 +185,17 @@ export const PlanView: React.FC = () => {
           </div>
         )}
 
+        {/* Comparison chart: plan appointments vs past visits */}
+        {activePlan.appointments.length > 0 && (
+          <div className="bp-card bp-card-padding-md">
+            <h3 className="bp-section-title mb-3">Your Plan at a Glance</h3>
+            <ComparisonChart
+              planAppointments={activePlan.appointments}
+              pastBookings={pastBookings}
+            />
+          </div>
+        )}
+
         {/* Appointments in plan */}
         <section>
           <h3 className="bp-section-title mb-3">Planned Appointments</h3>
@@ -240,24 +251,6 @@ export const PlanView: React.FC = () => {
                               </li>
                             ))}
                           </ul>
-                        )}
-                        {/* Duration & Cost comparison chart for primary service */}
-                        {primaryService && (primaryService.duration != null || primaryService.cost != null) && (
-                          <div className="mt-4">
-                            <ComparisonChart
-                              upcoming={{
-                                id: appt.id,
-                                plan_id: activePlan.id,
-                                service_variation_id: planVariationId || '',
-                                status: 'PENDING',
-                                start_at: appt.date.toISOString(),
-                                service_name: primaryService.name,
-                                service_duration: primaryService.duration,
-                                service_cost: primaryService.cost,
-                              } as any}
-                              past={pastBookings}
-                            />
-                          </div>
                         )}
                         {appt.notes && (
                           <p className="bp-caption text-muted-foreground italic mt-2">

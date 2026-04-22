@@ -1,7 +1,6 @@
 import React, { useMemo } from 'react';
 import { useClientData } from '../contexts/ClientDataContext';
 import { CalendarIcon } from './icons';
-import { ComparisonChart } from './ComparisonBar';
 import type { BookingRecord } from '../types';
 
 const ACTIVE_STATUSES = new Set(['ACCEPTED', 'PENDING', 'ACCEPTED_BY_MERCHANT']);
@@ -50,12 +49,8 @@ function statusLabel(status: string): string {
   }
 }
 
-const BookingCard: React.FC<{ booking: BookingRecord; allBookings: BookingRecord[] }> = ({ booking, allBookings }) => {
+const BookingCard: React.FC<{ booking: BookingRecord }> = ({ booking }) => {
   const isCancelled = booking.status.startsWith('CANCELLED') || booking.status === 'DECLINED';
-  const isUpcoming = ACTIVE_STATUSES.has(booking.status) && new Date(booking.start_at).getTime() >= Date.now();
-  const pastBookings = allBookings.filter(
-    (b) => new Date(b.start_at).getTime() < Date.now() && !b.status.startsWith('CANCELLED')
-  );
 
   return (
     <div className="bp-card bp-card-padding-sm">
@@ -81,12 +76,6 @@ const BookingCard: React.FC<{ booking: BookingRecord; allBookings: BookingRecord
               {statusLabel(booking.status)}
             </span>
           </div>
-          {/* Comparison chart for upcoming bookings */}
-          {isUpcoming && (booking.service_duration != null || booking.service_cost != null) && (
-            <div className="mt-4">
-              <ComparisonChart upcoming={booking} past={pastBookings} />
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -140,7 +129,7 @@ export const AppointmentsTab: React.FC = () => {
           ) : (
             <div className="space-y-3">
               {upcoming.map((b) => (
-                <BookingCard key={b.id} booking={b} allBookings={bookings} />
+                <BookingCard key={b.id} booking={b} />
               ))}
             </div>
           )}
@@ -157,7 +146,7 @@ export const AppointmentsTab: React.FC = () => {
           ) : (
             <div className="space-y-3">
               {past.map((b) => (
-                <BookingCard key={b.id} booking={b} allBookings={bookings} />
+                <BookingCard key={b.id} booking={b} />
               ))}
             </div>
           )}

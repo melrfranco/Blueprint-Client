@@ -2,7 +2,6 @@ import React, { useMemo } from 'react';
 import { useClientData } from '../contexts/ClientDataContext';
 import { useAuth } from '../contexts/AuthContext';
 import { CalendarIcon, StarIcon, GiftIcon } from './icons';
-import { ComparisonChart } from './ComparisonBar';
 
 const ACTIVE_STATUSES = new Set(['ACCEPTED', 'PENDING', 'ACCEPTED_BY_MERCHANT']);
 
@@ -47,12 +46,6 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ onNavigate }) 
 
   const nextBooking = upcomingBookings[0];
   const activePlan = plans.find((p) => p.status === 'active') || plans[0];
-
-  // Past bookings for comparison chart
-  const pastBookings = useMemo(() => {
-    const now = Date.now();
-    return bookings.filter((b) => new Date(b.start_at).getTime() < now && !b.status.startsWith('CANCELLED'));
-  }, [bookings]);
 
   const membershipLabel = useMemo(() => {
     if (!activePlan) return 'No active plan';
@@ -134,12 +127,6 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ onNavigate }) 
                   <p className="bp-caption text-muted-foreground mt-0.5">
                     {formatDateShort(nextBooking.start_at)} at {formatTime(nextBooking.start_at)}
                   </p>
-                  {/* Duration & Cost comparison chart */}
-                  {(nextBooking.service_duration != null || nextBooking.service_cost != null) && (
-                    <div className="mt-4">
-                      <ComparisonChart upcoming={nextBooking} past={pastBookings} />
-                    </div>
-                  )}
                   {upcomingBookings.length > 1 && (
                     <p className="bp-caption text-muted-foreground mt-2">
                       +{upcomingBookings.length - 1} more upcoming

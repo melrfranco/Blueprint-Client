@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { apiClient } from '../services/apiClient';
 import type { TimeSlot } from '../services/apiClient';
 import type { Service, PlanAppointment } from '../types';
@@ -40,6 +40,41 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({ service, planId, appoi
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   const variationId = service.variation_id;
+  const hasFetchedRef = useRef(false);
+
+  const fetchAvailabilityForCalendar = async () => {
+    if (!variationId) return;
+    setIsFetchingSlots(true);
+    setFetchError(null);
+    try {
+      const startDate = appointment?.date
+        ? new Date(appointment.date).toISOString().split('T')[0]
+        : new Date().toISOString().split('T')[0];
+
+      const response = await apiClient.getAvailabilityRange({
+        serviceVariationId: variationId,
+        date: startDate,
+        days: 30,
+      });
+
+      const dates = new Set(response.available_dates || []);
+      setAvailableDates(dates);
+      setSlotsByDate(response.slots_by_date || {});
+      setBookingStep('select-date');
+    } catch (e: any) {
+      setFetchError(e?.message || 'Failed to fetch availability');
+    } finally {
+      setIsFetchingSlots(false);
+    }
+  };
+
+  // Start fetching availability on mount (once)
+  useEffect(() => {
+    if (!hasFetchedRef.current && bookingEligible && variationId) {
+      hasFetchedRef.current = true;
+      fetchAvailabilityForCalendar();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // If not booking eligible, show blocked state
   if (!bookingEligible) {
@@ -82,30 +117,6 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({ service, planId, appoi
     );
   }
 
-  const fetchAvailabilityForCalendar = async () => {
-    setIsFetchingSlots(true);
-    setFetchError(null);
-    try {
-      const startDate = appointment?.date
-        ? new Date(appointment.date).toISOString().split('T')[0]
-        : new Date().toISOString().split('T')[0];
-
-      const response = await apiClient.getAvailabilityRange({
-        serviceVariationId: variationId,
-        date: startDate,
-        days: 45,
-      });
-
-      const dates = new Set(response.available_dates || []);
-      setAvailableDates(dates);
-      setSlotsByDate(response.slots_by_date || {});
-      setBookingStep('select-date');
-    } catch (e: any) {
-      setFetchError(e?.message || 'Failed to fetch availability');
-    } finally {
-      setIsFetchingSlots(false);
-    }
-  };
 
   const fetchSlotsForDate = async (dateStr: string) => {
     setIsFetchingSlots(true);
@@ -148,11 +159,6 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({ service, planId, appoi
       setIsBooking(false);
     }
   };
-
-  // Start fetching availability on mount
-  if (bookingStep === 'select-date' && availableDates.size === 0 && !isFetchingSlots && !fetchError) {
-    fetchAvailabilityForCalendar();
-  }
 
   // ── Calendar computations ──
   const month = calendarMonth.getMonth();

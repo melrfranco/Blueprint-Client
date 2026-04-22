@@ -11,6 +11,7 @@ import type {
   BookingProvider,
   TimeSlot,
   AvailabilityParams,
+  RangeAvailabilityParams,
   CreateBookingParams,
   BookingProviderResult,
 } from './booking-provider';
@@ -84,6 +85,58 @@ export class SquareBookingAdapter implements BookingProvider {
       .map((a: any) => ({
         start_at: a.start_at,
         end_at: a.end_at || a.start_at, // Square may not always return end_at
+        available: true,
+      }));
+  }
+
+  async getAvailabilityRange(params: RangeAvailabilityParams): Promise<TimeSlot[]> {
+    const squareBase = getSquareBase();
+
+    const body: any = {
+      query: {
+        filter: {
+          start_at_range: {
+            start_at: `${params.start_date}T00:00:00Z`,
+            end_at: `${params.end_date}T23:59:59Z`,
+          },
+          location_id: this.locationId,
+          segment_filters: [
+            {
+              service_variation_id: params.service_variation_id,
+            },
+          ],
+        },
+      },
+    };
+
+    if (params.team_member_id) {
+      body.query.filter.segment_filters[0].team_member_id = params.team_member_id;
+    }
+
+    const res = await fetch(`${squareBase}/v2/bookings/availability/search`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        'Content-Type': 'application/json',
+        'Square-Version': SQUARE_VERSION,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      log('SQUARE_AVAILABILITY_RANGE_FAILED', { status: res.status, errors: err.errors?.map((e: any) => e.code) });
+      throw new Error('Failed to fetch availability range from provider');
+    }
+
+    const data = await res.json();
+    const availabilities = data.availabilities || [];
+
+    return availabilities
+      .filter((a: any) => a.status === 'AVAILABLE')
+      .map((a: any) => ({
+        start_at: a.start_at,
+        end_at: a.end_at || a.start_at,
         available: true,
       }));
   }

@@ -38,57 +38,36 @@ export default async function handler(req: any, res: any) {
     const provider = await resolveProvider(client.salonId);
 
     // If days param is provided, fetch availability across a date range
-    // Returns { available_dates: string[], slots_by_date: Record<string, TimeSlot[]> }
+    // Uses a single provider API call spanning start_date → end_date
     const numDays = days ? Math.min(parseInt(days, 10) || 1, 60) : 0;
 
     if (numDays > 1) {
-      const availableDates: string[] = [];
-      const slotsByDate: Record<string, any[]> = {};
-
-      // Fetch each day in parallel (batched to avoid rate limits)
       const startDate = new Date(date + 'T12:00:00Z');
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + numDays);
+      const endDateStr = endDate.toISOString().split('T')[0];
 
-      const datesToFetch: string[] = [];
-      for (let i = 0; i < numDays; i++) {
-        const d = new Date(startDate);
-        d.setDate(d.getDate() + i);
-        if (d >= today) {
-          datesToFetch.push(d.toISOString().split('T')[0]);
-        }
-      }
+      // Single API call for the entire range
+      const allSlots = await provider.getAvailabilityRange({
+        salon_id: client.salonId,
+        service_variation_id,
+        team_member_id,
+        start_date: date,
+        end_date: endDateStr,
+      });
 
-      // Batch in groups of 7 to avoid overwhelming the provider
-      for (let i = 0; i < datesToFetch.length; i += 7) {
-        const batch = datesToFetch.slice(i, i + 7);
-        const results = await Promise.all(
-          batch.map(async (d) => {
-            try {
-              const slots = await provider.getAvailability({
-                salon_id: client.salonId,
-                service_variation_id,
-                team_member_id,
-                date: d,
-              });
-              return { date: d, slots };
-            } catch {
-              return { date: d, slots: [] };
-            }
-          })
-        );
-        for (const r of results) {
-          if (r.slots.length > 0) {
-            availableDates.push(r.date);
-            slotsByDate[r.date] = r.slots;
-          }
-        }
+      // Group slots by date
+      const slotsByDate: Record<string, any[]> = {};
+      for (const slot of allSlots) {
+        const slotDate = slot.start_at.split('T')[0];
+        if (!slotsByDate[slotDate]) slotsByDate[slotDate] = [];
+        slotsByDate[slotDate].push(slot);
       }
 
       return res.status(200).json({
         date,
         days: numDays,
-        available_dates: availableDates,
+        available_dates: Object.keys(slotsByDate).sort(),
         slots_by_date: slotsByDate,
       });
     }

@@ -19,6 +19,14 @@ export interface AvailabilityParams {
   date: string;       // YYYY-MM-DD
 }
 
+export interface RangeAvailabilityParams {
+  salon_id: string;
+  service_variation_id: string;
+  team_member_id?: string;
+  start_date: string;  // YYYY-MM-DD
+  end_date: string;    // YYYY-MM-DD
+}
+
 export interface CreateBookingParams {
   salon_id: string;
   service_variation_id: string;
@@ -37,6 +45,9 @@ export interface BookingProviderResult {
 export interface BookingProvider {
   /** Fetch available time slots for a service on a given date */
   getAvailability(params: AvailabilityParams): Promise<TimeSlot[]>;
+
+  /** Fetch available time slots across a date range in a single call */
+  getAvailabilityRange(params: RangeAvailabilityParams): Promise<TimeSlot[]>;
 
   /** Create a booking with the provider */
   createBooking(params: CreateBookingParams): Promise<BookingProviderResult>;

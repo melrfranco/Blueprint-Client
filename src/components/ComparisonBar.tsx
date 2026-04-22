@@ -4,13 +4,20 @@ import type { BookingRecord } from '../types';
 type TabKey = 'duration' | 'cost';
 
 interface ComparisonChartProps {
-  /** The upcoming/next booking to highlight */
   upcoming: BookingRecord | undefined;
-  /** Past bookings to compare against */
   past: BookingRecord[];
-  /** Max number of past bars to show */
   maxPast?: number;
 }
+
+// Blueprint palette — distinct, on-brand colors for each service slot
+const SERVICE_COLORS = [
+  '#0B3559', // deep navy (primary)
+  '#5B9EC9', // sky blue (accent)
+  '#2B7A9E', // teal blue
+  '#8FB8D4', // light blue
+  '#1A5276', // dark teal
+  '#A9CCE3', // pale blue
+];
 
 export const ComparisonChart: React.FC<ComparisonChartProps> = ({
   upcoming,
@@ -19,131 +26,157 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
 }) => {
   const [tab, setTab] = useState<TabKey>('duration');
 
-  // Build chart data: past bookings (most recent first, capped) + upcoming
-  const recentPast = past
-    .filter((b) => !b.status.startsWith('CANCELLED'))
-    .sort((a, b) => new Date(b.start_at).getTime() - new Date(a.start_at).getTime())
-    .slice(0, maxPast);
-
-  const bars: ChartBar[] = [
-    ...recentPast.map((b) => ({
-      label: shortName(b.service_name),
-      value: tab === 'duration' ? (b.service_duration ?? 0) : (b.service_cost ?? 0),
-      isUpcoming: false,
-      date: b.start_at,
-    })),
+  // Collect all unique service names across all bookings to assign colors consistently
+  const allBookings = [
+    ...past.filter((b) => !b.status.startsWith('CANCELLED')),
+    ...(upcoming ? [upcoming] : []),
   ];
 
-  // Add upcoming bar at the end if it has data
-  if (upcoming) {
-    const val = tab === 'duration' ? upcoming.service_duration : upcoming.service_cost;
-    if (val != null) {
-      bars.push({
-        label: shortName(upcoming.service_name),
-        value: val,
-        isUpcoming: true,
-        date: upcoming.start_at,
-      });
-    }
+  const serviceNames = Array.from(new Set(allBookings.map((b) => b.service_name ?? 'Service')));
+  const serviceColorMap = new Map(serviceNames.map((name, i) => [name, SERVICE_COLORS[i % SERVICE_COLORS.length]]));
+
+  // Build visit groups: past (oldest→newest) + upcoming at the end
+  const recentPast = past
+    .filter((b) => !b.status.startsWith('CANCELLED'))
+    .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime())
+    .slice(-maxPast);
+
+  interface Visit {
+    label: string;
+    bookings: BookingRecord[];
+    isUpcoming: boolean;
   }
 
-  const maxVal = bars.length > 0 ? Math.max(...bars.map((b) => b.value), 1) : 1;
+  // Group by date (each past booking is its own visit for now)
+  const visits: Visit[] = [
+    ...recentPast.map((b, i) => ({
+      label: shortDate(b.start_at, i, recentPast.length),
+      bookings: [b],
+      isUpcoming: false,
+    })),
+    ...(upcoming ? [{ label: 'Next', bookings: [upcoming], isUpcoming: true }] : []),
+  ];
+
+  // Max value across all bars for scale
+  const allVals = allBookings.map((b) =>
+    tab === 'duration' ? (b.service_duration ?? 0) : (b.service_cost ?? 0)
+  );
+  const maxVal = Math.max(...allVals, 1);
 
   // Comparison summary
   const summary = getSummary(upcoming, recentPast, tab);
 
+  if (visits.length === 0) return null;
+
   return (
-    <div className="w-full">
+    <div className="w-full select-none">
       {/* Tabs */}
-      <div className="flex gap-1 mb-4">
+      <div className="flex gap-1 mb-4 p-1 bg-muted rounded-full">
         <button
           onClick={() => setTab('duration')}
-          className={`flex-1 py-2 rounded-full text-sm font-semibold transition-all ${
+          className={`flex-1 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all ${
             tab === 'duration'
-              ? 'bg-accent text-accent-foreground shadow-[0_2px_8px_rgba(11,53,89,0.15)]'
-              : 'bg-muted text-muted-foreground'
+              ? 'bg-card text-foreground shadow-sm'
+              : 'text-muted-foreground'
           }`}
         >
           Duration
         </button>
         <button
           onClick={() => setTab('cost')}
-          className={`flex-1 py-2 rounded-full text-sm font-semibold transition-all ${
+          className={`flex-1 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all ${
             tab === 'cost'
-              ? 'bg-primary text-primary-foreground shadow-[0_2px_8px_rgba(11,53,89,0.15)]'
-              : 'bg-muted text-muted-foreground'
+              ? 'bg-card text-foreground shadow-sm'
+              : 'text-muted-foreground'
           }`}
         >
           Cost
         </button>
       </div>
 
-      {/* Bar chart */}
-      <div className="space-y-2">
-        {bars.map((bar, i) => {
-          const pct = (bar.value / maxVal) * 100;
-          return (
-            <div key={i} className="flex items-center gap-3">
-              {/* Label */}
-              <div className="w-20 flex-shrink-0 text-right">
-                <span className={`bp-caption truncate block ${bar.isUpcoming ? 'text-primary font-semibold' : 'text-muted-foreground'}`}>
-                  {bar.label}
-                </span>
-              </div>
-              {/* Bar */}
-              <div className="flex-1 relative h-8 flex items-center">
-                <div
-                  className={`h-8 rounded-full transition-all duration-500 flex items-center justify-end pr-3 ${
-                    bar.isUpcoming
-                      ? tab === 'duration' ? 'bg-accent' : 'bg-primary'
-                      : tab === 'duration' ? 'bg-accent/25' : 'bg-primary/25'
-                  }`}
-                  style={{ width: `${Math.max(pct, 8)}%` }}
-                >
-                  <span className={`bp-caption font-semibold whitespace-nowrap ${
-                    bar.isUpcoming ? 'text-white' : tab === 'duration' ? 'text-accent' : 'text-primary'
-                  }`}>
-                    {tab === 'duration' ? formatDuration(bar.value) : formatCost(bar.value)}
-                  </span>
-                </div>
-              </div>
+      {/* Chart area */}
+      <div className="flex items-end gap-3 h-36 px-1">
+        {visits.map((visit, vi) => (
+          <div key={vi} className="flex-1 flex flex-col items-center gap-0.5 h-full justify-end">
+            {/* Bars for each service in this visit */}
+            <div className="flex items-end gap-0.5 w-full justify-center h-full">
+              {visit.bookings.map((b, bi) => {
+                const val = tab === 'duration' ? (b.service_duration ?? 0) : (b.service_cost ?? 0);
+                const heightPct = maxVal > 0 ? (val / maxVal) * 100 : 0;
+                const color = serviceColorMap.get(b.service_name ?? 'Service') ?? SERVICE_COLORS[0];
+                const opacity = visit.isUpcoming ? '1' : '0.55';
+                return (
+                  <div
+                    key={bi}
+                    className="flex-1 rounded-t-lg transition-all duration-500 relative group"
+                    style={{
+                      height: `${Math.max(heightPct, 4)}%`,
+                      backgroundColor: color,
+                      opacity,
+                      maxWidth: '28px',
+                    }}
+                  >
+                    {/* Tooltip on hover */}
+                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap bg-foreground text-background text-[9px] font-semibold px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                      {tab === 'duration' ? formatDuration(val) : formatCost(val)}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
+
+            {/* Visit label */}
+            <span
+              className={`text-[9px] font-semibold uppercase tracking-wide mt-1 text-center leading-tight ${
+                visit.isUpcoming ? 'text-primary' : 'text-muted-foreground'
+              }`}
+            >
+              {visit.label}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Y-axis hint */}
+      <div className="flex justify-between mt-1 px-1">
+        <span className="text-[9px] text-muted-foreground">0</span>
+        <span className="text-[9px] text-muted-foreground">
+          {tab === 'duration' ? formatDuration(maxVal) : formatCost(maxVal)}
+        </span>
       </div>
 
       {/* Summary */}
       {summary && (
-        <p className="bp-caption text-muted-foreground mt-3 text-center">{summary}</p>
+        <p className="bp-caption text-muted-foreground mt-3 text-center italic">{summary}</p>
       )}
 
       {/* Legend */}
-      <div className="flex items-center justify-center gap-4 mt-2">
-        <div className="flex items-center gap-1.5">
-          <div className={`w-3 h-3 rounded-full ${tab === 'duration' ? 'bg-accent/25' : 'bg-primary/25'}`} />
-          <span className="bp-caption text-muted-foreground">Past</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className={`w-3 h-3 rounded-full ${tab === 'duration' ? 'bg-accent' : 'bg-primary'}`} />
-          <span className="bp-caption text-muted-foreground">Upcoming</span>
-        </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 mt-3 justify-center">
+        {serviceNames.map((name) => (
+          <div key={name} className="flex items-center gap-1.5">
+            <div
+              className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
+              style={{ backgroundColor: serviceColorMap.get(name) }}
+            />
+            <span className="bp-caption text-muted-foreground">{name}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
 };
 
-interface ChartBar {
-  label: string;
-  value: number;
-  isUpcoming: boolean;
-  date: string;
-}
-
-function shortName(name: string | undefined): string {
-  if (!name) return 'Service';
-  // Take first word or up to 10 chars
-  const first = name.split(' — ')[0].split(' - ')[0];
-  return first.length > 10 ? first.slice(0, 9) + '…' : first;
+function shortDate(iso: string, index: number, total: number): string {
+  try {
+    const d = new Date(iso);
+    // Show month/day for the last few; for older ones just show index
+    if (total <= 5 || index >= total - 4) {
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+    return `Visit ${index + 1}`;
+  } catch {
+    return `Visit ${index + 1}`;
+  }
 }
 
 function getSummary(
@@ -152,18 +185,14 @@ function getSummary(
   tab: TabKey,
 ): string | null {
   if (!upcoming || past.length === 0) return null;
-
   const currentVal = tab === 'duration' ? upcoming.service_duration : upcoming.service_cost;
   if (currentVal == null) return null;
-
   const pastVals = past
     .map((b) => (tab === 'duration' ? b.service_duration : b.service_cost))
     .filter((v): v is number => v != null);
   if (pastVals.length === 0) return null;
-
   const avg = pastVals.reduce((a, b) => a + b, 0) / pastVals.length;
   const ratio = currentVal / avg;
-
   if (tab === 'duration') {
     if (ratio < 0.4) return 'Much shorter than your average visit';
     if (ratio < 0.65) return 'About half as long as your average visit';

@@ -168,24 +168,52 @@ export class SquareBookingAdapter implements BookingProvider {
   async createBooking(params: CreateBookingParams): Promise<BookingProviderResult> {
     const squareBase = getSquareBase();
 
-    // Square Booking API: Create booking
-    // https://developer.squareup.com/reference/square/booking-api/create-booking
+    // First, fetch service_variation_version from catalog (Pro does this too)
+    let serviceVariationVersion: number | undefined;
+    try {
+      const catRes = await fetch(
+        `${squareBase}/v2/catalog/object/${encodeURIComponent(params.service_variation_id)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json',
+            'Square-Version': SQUARE_VERSION,
+          },
+        }
+      );
+      if (catRes.ok) {
+        const catData = await catRes.json();
+        serviceVariationVersion = catData.object?.version;
+      }
+    } catch {
+      // Non-fatal; proceed without version
+    }
+
+    const segment: any = {
+      service_variation_id: params.service_variation_id,
+      team_member_id: params.team_member_id || undefined,
+    };
+    if (serviceVariationVersion) {
+      segment.service_variation_version = serviceVariationVersion;
+    }
+
     const body: any = {
       booking: {
         location_id: this.locationId,
         start_at: params.start_at,
-        customer_id: params.customer_id, // resolved server-side from client_provider_mappings
-        appointment_segments: [
-          {
-            service_variation_id: params.service_variation_id,
-          },
-        ],
+        customer_id: params.customer_id || undefined,
+        appointment_segments: [segment],
       },
     };
 
-    if (params.team_member_id) {
-      body.booking.appointment_segments[0].team_member_id = params.team_member_id;
-    }
+    log('SQUARE_CREATE_BOOKING_REQUEST', {
+      locationId: this.locationId,
+      startAt: params.start_at,
+      customerId: params.customer_id || 'NONE',
+      teamMemberId: params.team_member_id || 'NONE',
+      serviceVariationId: params.service_variation_id,
+      serviceVariationVersion: serviceVariationVersion || 'NONE',
+    });
 
     const res = await fetch(`${squareBase}/v2/bookings`, {
       method: 'POST',
@@ -198,10 +226,19 @@ export class SquareBookingAdapter implements BookingProvider {
     });
 
     if (!res.ok) {
-      const err = await res.json();
-      log('SQUARE_CREATE_BOOKING_FAILED', { status: res.status, errors: err.errors?.map((e: any) => e.code) });
-      const message = err.errors?.[0]?.detail || err.errors?.[0]?.message || 'Booking creation failed';
-      throw new Error(message);
+      const errText = await res.text();
+      let errDetail = 'Booking creation failed';
+      try {
+        const errJson = JSON.parse(errText);
+        log('SQUARE_CREATE_BOOKING_FAILED', {
+          status: res.status,
+          errors: errJson.errors,
+        });
+        errDetail = errJson.errors?.[0]?.detail || errJson.errors?.[0]?.message || errDetail;
+      } catch {
+        log('SQUARE_CREATE_BOOKING_FAILED', { status: res.status, error: errText.substring(0, 500) });
+      }
+      throw new Error(errDetail);
     }
 
     const data = await res.json();

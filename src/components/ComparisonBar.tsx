@@ -68,9 +68,9 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
       }));
   }, [pastBookings]);
 
-  // Upcoming visits: from plan appointments (max 10)
-  const upcomingVisits: Visit[] = useMemo(() =>
-    planAppointments.slice(0, 10).map((appt) => ({
+  // Upcoming visits: from plan appointments, always pad to 10
+  const upcomingVisits: Visit[] = useMemo(() => {
+    const visits = planAppointments.slice(0, 10).map((appt) => ({
       label: appt.date instanceof Date
         ? shortDate(appt.date.toISOString())
         : shortDate(String(appt.date)),
@@ -79,9 +79,13 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
         value: 0,
       })),
       isUpcoming: true,
-    })),
-    [planAppointments]
-  );
+    }));
+    // Pad to 10 with placeholder visits
+    while (visits.length < 10) {
+      visits.push({ label: `Visit ${visits.length + 1}`, segments: [], isUpcoming: true });
+    }
+    return visits;
+  }, [planAppointments]);
 
   // --- Fill segment values based on active tab ---
   const visitsFilled: (Visit & { total: number })[] = useMemo(() => {
@@ -230,53 +234,63 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
       </div>
 
       {/* Chart area */}
-      <div className="flex items-end justify-center gap-1 h-48 px-1 overflow-x-auto">
+      <div className="flex items-end justify-center gap-2 h-48 px-2 overflow-x-auto">
         {visitsFilled.map((visit, vi) => {
           const totalHeightPct = maxTotal > 0 ? (visit.total / maxTotal) * 100 : 0;
           const isDivider = vi === dividerIndex && dividerIndex > 0;
+          const isEmpty = visit.segments.length === 0;
           return (
             <React.Fragment key={vi}>
               {/* Divider line between past and upcoming */}
               {isDivider && (
-                <div className="flex-shrink-0 w-px self-stretch bg-border mx-0.5" />
+                <div className="flex-shrink-0 w-px self-stretch bg-border mx-1" />
               )}
-              <div className="flex-shrink-0 flex flex-col items-center h-full justify-end" style={{ minWidth: '28px', maxWidth: '48px', width: `${100 / Math.max(visitsFilled.length, 1)}%` }}>
+              <div className="flex-shrink-0 flex flex-col items-center h-full justify-end" style={{ width: `${100 / Math.max(visitsFilled.length, 1)}%`, minWidth: '24px', maxWidth: '40px' }}>
                 {/* Total label above bar */}
-                <span className={`text-[8px] font-bold mb-0.5 whitespace-nowrap ${visit.isUpcoming ? 'text-primary' : 'text-muted-foreground'}`}>
-                  {tab === 'duration' ? formatDuration(visit.total) : formatCost(visit.total)}
-                </span>
+                {!isEmpty && (
+                  <span className={`text-[8px] font-bold mb-0.5 whitespace-nowrap ${visit.isUpcoming ? 'text-primary' : 'text-muted-foreground'}`}>
+                    {tab === 'duration' ? formatDuration(visit.total) : formatCost(visit.total)}
+                  </span>
+                )}
 
-                {/* Stacked bar */}
-                <div
-                  className="w-full relative rounded-t-lg overflow-hidden transition-all duration-500"
-                  style={{
-                    height: `${Math.max(totalHeightPct, 4)}%`,
-                    opacity: visit.isUpcoming ? 1 : 0.5,
-                    outline: visit.isUpcoming ? '2px solid var(--primary)' : '1px solid var(--border)',
-                    outlineOffset: '-1px',
-                  }}
-                >
-                  {visit.segments.map((seg, si) => {
-                    const segPct = visit.total > 0 ? (seg.value / visit.total) * 100 : 0;
-                    const color = serviceColorMap.get(seg.name) ?? SEGMENT_COLORS[0];
-                    return (
-                      <div
-                        key={si}
-                        className="w-full transition-all duration-300"
-                        style={{
-                          height: `${segPct}%`,
-                          backgroundColor: color,
-                          borderTop: si > 0 ? '1px solid rgba(255,255,255,0.3)' : undefined,
-                        }}
-                      />
-                    );
-                  })}
-                </div>
+                {/* Stacked bar or placeholder */}
+                {isEmpty ? (
+                  <div
+                    className="w-full rounded-t-lg border-2 border-dashed border-primary/20 transition-all duration-500"
+                    style={{ height: '8%' }}
+                  />
+                ) : (
+                  <div
+                    className="w-full relative rounded-t-lg overflow-hidden transition-all duration-500"
+                    style={{
+                      height: `${Math.max(totalHeightPct, 4)}%`,
+                      opacity: visit.isUpcoming ? 1 : 0.5,
+                      outline: visit.isUpcoming ? '2px solid var(--primary)' : '1px solid var(--border)',
+                      outlineOffset: '-1px',
+                    }}
+                  >
+                    {visit.segments.map((seg, si) => {
+                      const segPct = visit.total > 0 ? (seg.value / visit.total) * 100 : 0;
+                      const color = serviceColorMap.get(seg.name) ?? SEGMENT_COLORS[0];
+                      return (
+                        <div
+                          key={si}
+                          className="w-full transition-all duration-300"
+                          style={{
+                            height: `${segPct}%`,
+                            backgroundColor: color,
+                            borderTop: si > 0 ? '1px solid rgba(255,255,255,0.3)' : undefined,
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* Visit label */}
                 <span
                   className={`text-[7px] font-semibold uppercase tracking-wide mt-1 text-center leading-tight truncate w-full ${
-                    visit.isUpcoming ? 'text-primary' : 'text-muted-foreground'
+                    visit.isUpcoming && !isEmpty ? 'text-primary' : 'text-muted-foreground'
                   }`}
                 >
                   {visit.label}

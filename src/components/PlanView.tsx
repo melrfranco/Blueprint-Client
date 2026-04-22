@@ -156,7 +156,7 @@ export const PlanView: React.FC = () => {
         {membershipIsOffered && (
           <div className="flex items-center gap-3 px-4 py-2.5 bg-secondary/10 rounded-full">
             <StarIcon className="w-5 h-5 text-secondary flex-shrink-0" />
-            <span className="bp-body-sm font-semibold text-secondary-foreground flex-1">Membership offer pending</span>
+            <span className="bp-body-sm font-semibold text-secondary flex-1">Membership offer pending</span>
             <div className="flex items-center gap-2">
               {acceptError && (
                 <span className="bp-caption text-destructive">{acceptError}</span>
@@ -170,7 +170,7 @@ export const PlanView: React.FC = () => {
               </button>
               <button
                 onClick={() => {/* TODO: decline/postpone */}}
-                className="bp-caption text-muted-foreground hover:text-foreground transition-colors underline"
+                className="bp-caption text-secondary hover:text-foreground transition-colors underline"
               >
                 Later
               </button>
@@ -200,7 +200,12 @@ export const PlanView: React.FC = () => {
             </div>
           ) : (
             <div className="space-y-3">
-              {activePlan.appointments.map((appt: PlanAppointment, idx) => {
+              {activePlan.appointments
+                .filter((appt) => {
+                  const d = appt.date instanceof Date ? appt.date : new Date(appt.date);
+                  return d.getTime() >= Date.now();
+                })
+                .map((appt: PlanAppointment, idx) => {
                 const primaryService = appt.services?.[0];
                 // Build a Service object directly from plan data — no catalog needed
                 // In plan data, service.id IS the Square variation ID
@@ -217,9 +222,6 @@ export const PlanView: React.FC = () => {
                 } : null;
                 const variationId = planVariationId;
                 const alreadyBooked = variationId ? bookedVariationIds.has(variationId) : false;
-                const isPast = appt.date instanceof Date
-                  ? appt.date.getTime() < Date.now()
-                  : new Date(appt.date).getTime() < Date.now();
 
                 return (
                   <div key={appt.id || idx} className="bp-card bp-card-padding-sm">
@@ -255,11 +257,7 @@ export const PlanView: React.FC = () => {
                         )}
 
                         <div className="mt-3 flex items-center gap-2">
-                          {isPast ? (
-                            <span className="bp-caption uppercase tracking-widest px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                              Past
-                            </span>
-                          ) : alreadyBooked ? (
+                          {alreadyBooked ? (
                             <span className="bp-caption uppercase tracking-widest px-2 py-0.5 rounded-full bg-primary/10 text-primary">
                               Booked
                             </span>

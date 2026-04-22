@@ -85,7 +85,7 @@ export async function resolveProvider(salonId: string): Promise<BookingProvider>
     let merchant: any = null;
 
     // Path 1: Direct lookup by salon owner_user_id
-    const { data: m1 } = await supabase
+    const { data: m1, error: m1Error } = await supabase
       .from('merchant_settings')
       .select('square_access_token')
       .eq('supabase_user_id', salon.owner_user_id)
@@ -97,6 +97,7 @@ export async function resolveProvider(salonId: string): Promise<BookingProvider>
       ownerUserId: salon.owner_user_id,
       found: !!merchant,
       hasSquareAccessToken: !!merchant?.square_access_token,
+      queryError: m1Error?.message || null,
     });
 
     // Path 2: If owner_user_id didn't match, try salon_memberships owner/admin

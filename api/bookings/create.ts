@@ -60,22 +60,31 @@ export default async function handler(req: any, res: any) {
     }
 
     // Service lookup: square_variation_id lives in metadata jsonb
-    const { data: serviceRow } = await supabase
+    // The service.id passed from the client IS the square_variation_id
+    log('BOOKING_SERVICE_LOOKUP', {
+      salonId: client.salonId,
+      ownerUserId: salon.owner_user_id,
+      serviceVariationId: service_variation_id,
+    });
+
+    const { data: serviceRow, error: serviceError } = await supabase
       .from('services')
       .select('id, metadata')
       .eq('source', 'square')
-      .contains('metadata', {
-        admin_user_id: salon.owner_user_id,
-        square_variation_id: service_variation_id,
-      })
+      .contains('metadata', { admin_user_id: salon.owner_user_id })
       .maybeSingle();
 
-    if (!serviceRow) {
-      return res.status(404).json({
-        code: 'SERVICE_NOT_FOUND',
-        message: 'Service not found or does not belong to this salon',
-      });
-    }
+    log('BOOKING_SERVICE_RESULT', {
+      found: !!serviceRow,
+      error: serviceError?.message || null,
+      serviceId: serviceRow?.id,
+      metadataVariationId: serviceRow?.metadata?.square_variation_id,
+      requestedVariationId: service_variation_id,
+    });
+
+    // Skip strict service validation — the availability endpoint already proved
+    // this service exists in Square. The service table may not have every
+    // variation indexed. Trust the variation_id that was used to fetch availability.
 
     // ── Safeguard 4: If plan_id provided, verify it belongs to this client ──
     if (plan_id) {

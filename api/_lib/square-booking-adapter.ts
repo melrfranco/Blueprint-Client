@@ -99,7 +99,6 @@ export class SquareBookingAdapter implements BookingProvider {
     const body: any = {
       query: {
         filter: {
-          booking_id: '',
           location_id: this.locationId,
           start_at_range: {
             start_at: startAt,

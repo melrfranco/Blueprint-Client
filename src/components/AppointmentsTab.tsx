@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { useClientData } from '../contexts/ClientDataContext';
 import { CalendarIcon } from './icons';
+import { ComparisonBar, getDurationComparison, getCostComparison, formatDuration, formatCost } from './ComparisonBar';
 import type { BookingRecord } from '../types';
 
 const ACTIVE_STATUSES = new Set(['ACCEPTED', 'PENDING', 'ACCEPTED_BY_MERCHANT']);
@@ -49,7 +50,7 @@ function statusLabel(status: string): string {
   }
 }
 
-const BookingCard: React.FC<{ booking: BookingRecord }> = ({ booking }) => {
+const BookingCard: React.FC<{ booking: BookingRecord; maxDuration: number; maxCost: number; avgDuration: number | undefined; avgCost: number | undefined }> = ({ booking, maxDuration, maxCost, avgDuration, avgCost }) => {
   const isCancelled = booking.status.startsWith('CANCELLED') || booking.status === 'DECLINED';
   return (
     <div className="bp-card bp-card-padding-sm">
@@ -74,10 +75,32 @@ const BookingCard: React.FC<{ booking: BookingRecord }> = ({ booking }) => {
             >
               {statusLabel(booking.status)}
             </span>
-            {booking.service_duration && (
-              <span className="bp-caption text-muted-foreground">{booking.service_duration} min</span>
-            )}
           </div>
+          {/* Duration & Cost comparison bars */}
+          {(booking.service_duration != null || booking.service_cost != null) && (
+            <div className="mt-3 space-y-2">
+              {booking.service_duration != null && (
+                <ComparisonBar
+                  value={booking.service_duration}
+                  maxValue={maxDuration || booking.service_duration}
+                  displayValue={formatDuration(booking.service_duration)}
+                  label="Duration"
+                  color="accent"
+                  comparisonText={avgDuration ? getDurationComparison(booking.service_duration, avgDuration) : null}
+                />
+              )}
+              {booking.service_cost != null && (
+                <ComparisonBar
+                  value={booking.service_cost}
+                  maxValue={maxCost || booking.service_cost}
+                  displayValue={formatCost(booking.service_cost)}
+                  label="Cost"
+                  color="primary"
+                  comparisonText={avgCost ? getCostComparison(booking.service_cost, avgCost) : null}
+                />
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -103,6 +126,14 @@ export const AppointmentsTab: React.FC = () => {
     past.sort((a, b) => new Date(b.start_at).getTime() - new Date(a.start_at).getTime());
     return { upcoming, past };
   }, [bookings]);
+
+  // Stats across all bookings for comparison bars
+  const allDurations = bookings.map((b) => b.service_duration).filter((d): d is number => d != null);
+  const allCosts = bookings.map((b) => b.service_cost).filter((c): c is number => c != null);
+  const maxDuration = allDurations.length > 0 ? Math.max(...allDurations) : 0;
+  const maxCost = allCosts.length > 0 ? Math.max(...allCosts) : 0;
+  const avgDuration = allDurations.length > 0 ? allDurations.reduce((a, b) => a + b, 0) / allDurations.length : undefined;
+  const avgCost = allCosts.length > 0 ? allCosts.reduce((a, b) => a + b, 0) / allCosts.length : undefined;
 
   if (loading) {
     return (
@@ -131,7 +162,7 @@ export const AppointmentsTab: React.FC = () => {
           ) : (
             <div className="space-y-3">
               {upcoming.map((b) => (
-                <BookingCard key={b.id} booking={b} />
+                <BookingCard key={b.id} booking={b} maxDuration={maxDuration} maxCost={maxCost} avgDuration={avgDuration} avgCost={avgCost} />
               ))}
             </div>
           )}
@@ -148,7 +179,7 @@ export const AppointmentsTab: React.FC = () => {
           ) : (
             <div className="space-y-3">
               {past.map((b) => (
-                <BookingCard key={b.id} booking={b} />
+                <BookingCard key={b.id} booking={b} maxDuration={maxDuration} maxCost={maxCost} avgDuration={avgDuration} avgCost={avgCost} />
               ))}
             </div>
           )}

@@ -69,6 +69,7 @@ export interface BookingRecord {
   // Derived client-side from services list for display
   service_name?: string;
   service_duration?: number;
+  service_cost?: number;
 }
 
 export interface Salon {

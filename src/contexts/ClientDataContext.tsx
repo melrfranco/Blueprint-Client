@@ -133,6 +133,7 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
               : svc.name
             : 'Service',
           service_duration: svc?.duration,
+          service_cost: svc?.cost,
         };
       });
       setBookings(decoratedBookings);

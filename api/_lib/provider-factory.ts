@@ -87,7 +87,7 @@ export async function resolveProvider(salonId: string): Promise<BookingProvider>
     // Path 1: Direct lookup by salon owner_user_id
     const { data: m1 } = await supabase
       .from('merchant_settings')
-      .select('square_access_token, settings')
+      .select('square_access_token')
       .eq('supabase_user_id', salon.owner_user_id)
       .maybeSingle();
     merchant = m1;
@@ -97,7 +97,6 @@ export async function resolveProvider(salonId: string): Promise<BookingProvider>
       ownerUserId: salon.owner_user_id,
       found: !!merchant,
       hasSquareAccessToken: !!merchant?.square_access_token,
-      settingsKeys: merchant?.settings ? Object.keys(merchant.settings) : [],
     });
 
     // Path 2: If owner_user_id didn't match, try salon_memberships owner/admin
@@ -115,7 +114,7 @@ export async function resolveProvider(salonId: string): Promise<BookingProvider>
         log('PROVIDER_TRYING_ADMIN_MEMBERSHIP', { salonId, adminUserId: adminMembership.user_id });
         const { data: m2 } = await supabase
           .from('merchant_settings')
-          .select('square_access_token, settings')
+          .select('square_access_token')
           .eq('supabase_user_id', adminMembership.user_id)
           .maybeSingle();
         if (m2?.square_access_token) {
@@ -125,22 +124,15 @@ export async function resolveProvider(salonId: string): Promise<BookingProvider>
       }
     }
 
-    const accessToken =
-      merchant?.square_access_token ??
-      merchant?.settings?.square_access_token ??
-      merchant?.settings?.oauth?.access_token ??
-      null;
+    const accessToken = merchant?.square_access_token ?? null;
 
     if (!accessToken) {
       log('PROVIDER_NO_CREDENTIALS', { salonId, ownerUserId: salon.owner_user_id });
       throw new Error('No provider credentials configured for this salon');
     }
 
-    // Resolve location_id from settings, or fetch dynamically from Square
-    let locationId =
-      merchant?.settings?.square_location_id ??
-      merchant?.settings?.oauth?.location_id ??
-      '';
+    // Resolve location_id dynamically from Square (Pro does the same)
+    let locationId = '';
 
     if (!locationId) {
       // Dynamically fetch location from Square (same approach as Blueprint Pro)

@@ -8,7 +8,6 @@ import { ActivationScreen } from './components/ActivationScreen';
 import { ClaimCodeEntry } from './components/ClaimCodeEntry';
 import { ClientDashboard } from './components/ClientDashboard';
 import { AppointmentsTab } from './components/AppointmentsTab';
-import { ServicesTab } from './components/ServicesTab';
 import { PlanView } from './components/PlanView';
 import { ProfileSettings } from './components/ProfileSettings';
 import { BottomNav } from './components/BottomNav';
@@ -79,8 +78,6 @@ const AuthenticatedShell: React.FC = () => {
         return <PlanView />;
       case 'appointments':
         return <AppointmentsTab />;
-      case 'services':
-        return <ServicesTab />;
       case 'profile':
         return <ProfileSettings />;
       default:

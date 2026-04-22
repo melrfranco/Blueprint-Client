@@ -20,7 +20,7 @@ function formatDateLong(date: Date): string {
 }
 
 export const PlanView: React.FC = () => {
-  const { plans, services, bookings, loading, refresh } = useClientData();
+  const { plans, bookings, loading, refresh } = useClientData();
   const { bookingEligible } = useAuth();
   const [bookingService, setBookingService] = useState<Service | null>(null);
   const [planIdForBooking, setPlanIdForBooking] = useState<string | undefined>(undefined);
@@ -31,15 +31,6 @@ export const PlanView: React.FC = () => {
     () => plans.find((p) => p.status === 'active') || plans[0],
     [plans],
   );
-
-  // Map variation_id → service for resolving planned services to bookable ones
-  const serviceByVariation = useMemo(() => {
-    const m = new Map<string, Service>();
-    for (const s of services) {
-      if (s.variation_id) m.set(s.variation_id, s);
-    }
-    return m;
-  }, [services]);
 
   // Map completed/upcoming bookings by service_variation_id for lookup
   const bookedVariationIds = useMemo(() => {
@@ -196,8 +187,18 @@ export const PlanView: React.FC = () => {
             <div className="space-y-3">
               {activePlan.appointments.map((appt: PlanAppointment, idx) => {
                 const primaryService = appt.services?.[0];
+                // Build a Service object directly from plan data — no catalog needed
+                const bookable: Service | null = primaryService ? {
+                  id: primaryService.id,
+                  name: primaryService.name,
+                  variation_name: primaryService.variation_name,
+                  category: primaryService.category || 'Square Import',
+                  cost: primaryService.cost,
+                  duration: primaryService.duration,
+                  variation_id: primaryService.variation_id,
+                  item_id: primaryService.item_id,
+                } : null;
                 const variationId = primaryService?.variation_id;
-                const bookable = variationId ? serviceByVariation.get(variationId) : null;
                 const alreadyBooked = variationId ? bookedVariationIds.has(variationId) : false;
 
                 return (
@@ -250,7 +251,7 @@ export const PlanView: React.FC = () => {
                             </button>
                           ) : (
                             <span className="bp-caption text-muted-foreground">
-                              {!bookingEligible ? 'Booking unavailable yet' : 'Contact salon to book'}
+                              {!bookingEligible ? 'Booking unavailable yet' : 'Service not bookable'}
                             </span>
                           )}
                         </div>

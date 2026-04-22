@@ -6,7 +6,7 @@ import { CalendarIcon, StarIcon, GiftIcon } from './icons';
 const ACTIVE_STATUSES = new Set(['ACCEPTED', 'PENDING', 'ACCEPTED_BY_MERCHANT']);
 
 interface ClientDashboardProps {
-  onNavigate: (tab: 'appointments' | 'services' | 'plan') => void;
+  onNavigate: (tab: 'appointments' | 'plan') => void;
 }
 
 function formatDateShort(iso: string): string {
@@ -190,15 +190,15 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ onNavigate }) 
           <button
             className="bp-button bp-button-primary"
             disabled={!bookingEligible}
-            onClick={() => onNavigate('services')}
+            onClick={() => onNavigate('plan')}
           >
             Book Appointment
           </button>
           <button
             className="bp-button bp-button-secondary"
-            onClick={() => onNavigate('services')}
+            onClick={() => onNavigate('plan')}
           >
-            View Services
+            View My Plan
           </button>
         </div>
       </div>

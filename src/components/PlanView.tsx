@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { apiClient } from '../services/apiClient';
 import { BookingFlow } from './BookingFlow';
 import { CalendarIcon, StarIcon, GiftIcon, CheckCircleIcon } from './icons';
-import { ComparisonBar, getDurationComparison, getCostComparison, formatDuration, formatCost } from './ComparisonBar';
+import { ComparisonChart } from './ComparisonBar';
 import type { Service, PlanAppointment } from '../types';
 
 function formatDateLong(date: Date): string {
@@ -45,13 +45,11 @@ export const PlanView: React.FC = () => {
     return s;
   }, [bookings, activePlan?.id]);
 
-  // Stats for comparison bars
-  const allDurations = bookings.map((b) => b.service_duration).filter((d): d is number => d != null);
-  const allCosts = bookings.map((b) => b.service_cost).filter((c): c is number => c != null);
-  const maxDuration = allDurations.length > 0 ? Math.max(...allDurations) : 0;
-  const maxCost = allCosts.length > 0 ? Math.max(...allCosts) : 0;
-  const avgDuration = allDurations.length > 0 ? allDurations.reduce((a, b) => a + b, 0) / allDurations.length : undefined;
-  const avgCost = allCosts.length > 0 ? allCosts.reduce((a, b) => a + b, 0) / allCosts.length : undefined;
+  // Past bookings for comparison chart
+  const pastBookings = useMemo(() => {
+    const now = Date.now();
+    return bookings.filter((b) => new Date(b.start_at).getTime() < now && !b.status.startsWith('CANCELLED'));
+  }, [bookings]);
 
   const handleAcceptMembership = async () => {
     if (!activePlan) return;
@@ -243,29 +241,22 @@ export const PlanView: React.FC = () => {
                             ))}
                           </ul>
                         )}
-                        {/* Duration & Cost comparison bars for primary service */}
+                        {/* Duration & Cost comparison chart for primary service */}
                         {primaryService && (primaryService.duration != null || primaryService.cost != null) && (
-                          <div className="mt-3 space-y-2">
-                            {primaryService.duration != null && (
-                              <ComparisonBar
-                                value={primaryService.duration}
-                                maxValue={maxDuration || primaryService.duration}
-                                displayValue={formatDuration(primaryService.duration)}
-                                label="Duration"
-                                color="accent"
-                                comparisonText={avgDuration ? getDurationComparison(primaryService.duration, avgDuration) : null}
-                              />
-                            )}
-                            {primaryService.cost != null && (
-                              <ComparisonBar
-                                value={primaryService.cost}
-                                maxValue={maxCost || primaryService.cost}
-                                displayValue={formatCost(primaryService.cost)}
-                                label="Cost"
-                                color="primary"
-                                comparisonText={avgCost ? getCostComparison(primaryService.cost, avgCost) : null}
-                              />
-                            )}
+                          <div className="mt-4">
+                            <ComparisonChart
+                              upcoming={{
+                                id: appt.id,
+                                plan_id: activePlan.id,
+                                service_variation_id: planVariationId || '',
+                                status: 'PENDING',
+                                start_at: appt.date.toISOString(),
+                                service_name: primaryService.name,
+                                service_duration: primaryService.duration,
+                                service_cost: primaryService.cost,
+                              } as any}
+                              past={pastBookings}
+                            />
                           </div>
                         )}
                         {appt.notes && (

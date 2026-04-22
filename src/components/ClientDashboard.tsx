@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { useClientData } from '../contexts/ClientDataContext';
 import { useAuth } from '../contexts/AuthContext';
 import { CalendarIcon, StarIcon, GiftIcon } from './icons';
-import { ComparisonBar, getDurationComparison, getCostComparison, formatDuration, formatCost } from './ComparisonBar';
+import { ComparisonChart } from './ComparisonBar';
 
 const ACTIVE_STATUSES = new Set(['ACCEPTED', 'PENDING', 'ACCEPTED_BY_MERCHANT']);
 
@@ -48,31 +48,11 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ onNavigate }) 
   const nextBooking = upcomingBookings[0];
   const activePlan = plans.find((p) => p.status === 'active') || plans[0];
 
-  // Past booking stats for visual comparison
+  // Past bookings for comparison chart
   const pastBookings = useMemo(() => {
     const now = Date.now();
     return bookings.filter((b) => new Date(b.start_at).getTime() < now && !b.status.startsWith('CANCELLED'));
   }, [bookings]);
-
-  const maxPastDuration = useMemo(() => {
-    const durations = pastBookings.map((b) => b.service_duration).filter((d): d is number => d != null);
-    return durations.length > 0 ? Math.max(...durations) : 0;
-  }, [pastBookings]);
-
-  const avgPastDuration = useMemo(() => {
-    const durations = pastBookings.map((b) => b.service_duration).filter((d): d is number => d != null);
-    return durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : undefined;
-  }, [pastBookings]);
-
-  const maxPastCost = useMemo(() => {
-    const costs = pastBookings.map((b) => b.service_cost).filter((c): c is number => c != null);
-    return costs.length > 0 ? Math.max(...costs) : 0;
-  }, [pastBookings]);
-
-  const avgPastCost = useMemo(() => {
-    const costs = pastBookings.map((b) => b.service_cost).filter((c): c is number => c != null);
-    return costs.length > 0 ? costs.reduce((a, b) => a + b, 0) / costs.length : undefined;
-  }, [pastBookings]);
 
   const membershipLabel = useMemo(() => {
     if (!activePlan) return 'No active plan';
@@ -154,29 +134,10 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ onNavigate }) 
                   <p className="bp-caption text-muted-foreground mt-0.5">
                     {formatDateShort(nextBooking.start_at)} at {formatTime(nextBooking.start_at)}
                   </p>
-                  {/* Duration & Cost comparison bars */}
+                  {/* Duration & Cost comparison chart */}
                   {(nextBooking.service_duration != null || nextBooking.service_cost != null) && (
-                    <div className="mt-3 space-y-2">
-                      {nextBooking.service_duration != null && (
-                        <ComparisonBar
-                          value={nextBooking.service_duration}
-                          maxValue={maxPastDuration}
-                          displayValue={formatDuration(nextBooking.service_duration)}
-                          label="Duration"
-                          color="accent"
-                          comparisonText={getDurationComparison(nextBooking.service_duration, avgPastDuration)}
-                        />
-                      )}
-                      {nextBooking.service_cost != null && (
-                        <ComparisonBar
-                          value={nextBooking.service_cost}
-                          maxValue={maxPastCost}
-                          displayValue={formatCost(nextBooking.service_cost)}
-                          label="Cost"
-                          color="primary"
-                          comparisonText={getCostComparison(nextBooking.service_cost, avgPastCost)}
-                        />
-                      )}
+                    <div className="mt-4">
+                      <ComparisonChart upcoming={nextBooking} past={pastBookings} />
                     </div>
                   )}
                   {upcomingBookings.length > 1 && (

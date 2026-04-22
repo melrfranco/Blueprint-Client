@@ -162,23 +162,24 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
       </div>
 
       {/* Chart area */}
-      <div className="flex items-end gap-3 h-40 px-1">
+      <div className="flex items-end gap-2 h-48 px-1">
         {visitsWithTotals.map((visit, vi) => {
           const totalHeightPct = maxTotal > 0 ? (visit.total / maxTotal) * 100 : 0;
           return (
-            <div key={vi} className="flex-1 flex flex-col items-center h-full justify-end">
+            <div key={vi} className="flex-1 flex flex-col items-center h-full justify-end min-w-0">
               {/* Total label above bar */}
-              <span className={`text-[9px] font-bold mb-0.5 ${visit.isUpcoming ? 'text-primary' : 'text-muted-foreground'}`}>
+              <span className={`text-[10px] font-bold mb-0.5 ${visit.isUpcoming ? 'text-primary' : 'text-muted-foreground'}`}>
                 {tab === 'duration' ? formatDuration(visit.total) : formatCost(visit.total)}
               </span>
 
               {/* Stacked bar */}
               <div
-                className="w-full relative group rounded-t-lg overflow-hidden transition-all duration-500"
+                className="w-full max-w-[52px] relative group rounded-t-xl overflow-hidden transition-all duration-500"
                 style={{
-                  height: `${Math.max(totalHeightPct, 3)}%`,
-                  maxWidth: '48px',
-                  opacity: visit.isUpcoming ? 1 : 0.6,
+                  height: `${Math.max(totalHeightPct, 4)}%`,
+                  opacity: visit.isUpcoming ? 1 : 0.55,
+                  outline: visit.isUpcoming ? '2px solid var(--primary)' : '1px solid var(--border)',
+                  outlineOffset: '-1px',
                 }}
               >
                 {visit.bookings.map((b, bi) => {
@@ -192,10 +193,17 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
                       style={{
                         height: `${segPct}%`,
                         backgroundColor: color,
+                        borderTop: bi > 0 ? '1px solid rgba(255,255,255,0.25)' : undefined,
                       }}
                     >
+                      {/* Segment label (visible if segment is tall enough) */}
+                      {segPct > 18 && (
+                        <span className="absolute inset-0 flex items-center justify-center text-white text-[8px] font-bold leading-none pointer-events-none drop-shadow-sm">
+                          {b.service_name?.split(' — ')[0].split(' - ')[0].slice(0, 8)}
+                        </span>
+                      )}
                       {/* Segment tooltip */}
-                      <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 whitespace-nowrap bg-foreground/90 text-background text-[8px] font-semibold px-1 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                      <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 whitespace-nowrap bg-foreground/90 text-background text-[8px] font-semibold px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
                         {b.service_name}: {tab === 'duration' ? formatDuration(val) : formatCost(val)}
                       </div>
                     </div>
@@ -205,7 +213,7 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
 
               {/* Visit label */}
               <span
-                className={`text-[9px] font-semibold uppercase tracking-wide mt-1 text-center leading-tight ${
+                className={`text-[9px] font-semibold uppercase tracking-wide mt-1 text-center leading-tight truncate w-full ${
                   visit.isUpcoming ? 'text-primary' : 'text-muted-foreground'
                 }`}
               >

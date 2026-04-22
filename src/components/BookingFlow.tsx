@@ -32,6 +32,7 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({ service, planId, appoi
   const [availableDates, setAvailableDates] = useState<Set<string>>(new Set());
   const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([]);
   const [selectedSlotTime, setSelectedSlotTime] = useState<string | null>(null);
+  const [selectedTeamMemberId, setSelectedTeamMemberId] = useState<string | undefined>(undefined);
 
   const [isFetchingSlots, setIsFetchingSlots] = useState(false);
   const [isBooking, setIsBooking] = useState(false);
@@ -155,6 +156,7 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({ service, planId, appoi
       await apiClient.createBooking({
         serviceVariationId: variationId,
         startAt: slotTime,
+        teamMemberId: selectedTeamMemberId,
         planId,
       });
       setBookingSuccess(true);
@@ -378,7 +380,7 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({ service, planId, appoi
                       <div className="grid grid-cols-2 gap-2">
                         {(slots as TimeSlot[]).map((s, i) => (
                           <button key={i}
-                            onClick={() => { setSelectedSlotTime(s.start_at); setBookingStep('confirm'); }}
+                            onClick={() => { setSelectedSlotTime(s.start_at); setSelectedTeamMemberId(s.team_member_id); setBookingStep('confirm'); }}
                             disabled={isBooking}
                             className="p-4 border-4 bp-container-list text-center hover:border-accent active:scale-95 transition-all elevated-card border text-foreground"
                           >

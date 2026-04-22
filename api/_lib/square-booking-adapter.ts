@@ -92,6 +92,7 @@ export class SquareBookingAdapter implements BookingProvider {
       start_at: a.start_at,
       end_at: a.end_at || a.start_at,
       available: true,
+      team_member_id: a.appointment_segments?.[0]?.team_member_id || undefined,
     }));
   }
 
@@ -160,6 +161,7 @@ export class SquareBookingAdapter implements BookingProvider {
       start_at: a.start_at,
       end_at: a.end_at || a.start_at,
       available: true,
+      team_member_id: a.appointment_segments?.[0]?.team_member_id || undefined,
     }));
   }
 

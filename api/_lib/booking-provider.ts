@@ -10,6 +10,7 @@ export interface TimeSlot {
   start_at: string;   // ISO 8601
   end_at: string;     // ISO 8601
   available: boolean;
+  team_member_id?: string;
 }
 
 export interface AvailabilityParams {

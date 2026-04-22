@@ -10,6 +10,7 @@ export interface TimeSlot {
   start_at: string;
   end_at: string;
   available: boolean;
+  team_member_id?: string;
 }
 
 export interface AvailabilityResponse {

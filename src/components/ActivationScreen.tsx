@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiClient } from '../services/apiClient';
 import type { ActivationDetails, ActivationResult } from '../services/apiClient';
-import { CheckCircleIcon } from './icons';
+
 
 interface ActivationScreenProps {
   token?: string;
@@ -77,12 +77,9 @@ export const ActivationScreen: React.FC<ActivationScreenProps> = ({ token, claim
     return (
       <div className="bp-login-screen">
         <div className="bp-login-card">
-          <div className="bp-login-logo-wrap">
-            <div className="text-center">
-              <h1 className="bp-page-title">Blueprint Client</h1>
-              <p className="bp-overline mt-2">Activating Your Account</p>
-            </div>
-          </div>
+          <header className="bp-login-logo-wrap">
+            <img src="/logo.png" alt="Blueprint" className="bp-login-logo" />
+          </header>
           <div className="bp-login-body">
             <p className="bp-body-sm text-center text-muted-foreground">
               Verifying your invitation...
@@ -98,12 +95,9 @@ export const ActivationScreen: React.FC<ActivationScreenProps> = ({ token, claim
     return (
       <div className="bp-login-screen">
         <div className="bp-login-card">
-          <div className="bp-login-logo-wrap">
-            <div className="text-center">
-              <h1 className="bp-page-title">Blueprint Client</h1>
-              <p className="bp-overline mt-2">Activation Error</p>
-            </div>
-          </div>
+          <header className="bp-login-logo-wrap">
+            <img src="/logo.png" alt="Blueprint" className="bp-login-logo" />
+          </header>
           <div className="bp-login-body">
             <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-2xl">
               <p className="bp-caption text-destructive">{error}</p>
@@ -122,15 +116,9 @@ export const ActivationScreen: React.FC<ActivationScreenProps> = ({ token, claim
     return (
       <div className="bp-login-screen">
         <div className="bp-login-card">
-          <div className="bp-login-logo-wrap">
-            <div className="text-center">
-              <div className="flex justify-center mb-4">
-                <CheckCircleIcon className="w-16 h-16 text-primary" />
-              </div>
-              <h1 className="bp-page-title">Account Activated</h1>
-              <p className="bp-overline mt-2">Welcome to {details?.salon_name}</p>
-            </div>
-          </div>
+          <header className="bp-login-logo-wrap">
+            <img src="/logo.png" alt="Blueprint" className="bp-login-logo" />
+          </header>
           <div className="bp-login-body">
             <p className="bp-body-sm text-center text-muted-foreground">
               Your account has been set up successfully. You can now sign in with your email and password.
@@ -159,12 +147,9 @@ export const ActivationScreen: React.FC<ActivationScreenProps> = ({ token, claim
   return (
     <div className="bp-login-screen">
       <div className="bp-login-card">
-        <div className="bp-login-logo-wrap">
-          <div className="text-center">
-            <h1 className="bp-page-title">Blueprint Client</h1>
-            <p className="bp-overline mt-2">Set Up Your Account</p>
-          </div>
-        </div>
+        <header className="bp-login-logo-wrap">
+          <img src="/logo.png" alt="Blueprint" className="bp-login-logo" />
+        </header>
 
         <div className="bp-login-body">
           {details && (

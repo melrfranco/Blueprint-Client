@@ -5,7 +5,7 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Raleway', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans: ['Quicksand', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         heading: ['Comfortaa', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
       colors: {

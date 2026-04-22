@@ -33,12 +33,9 @@ export const ClaimCodeEntry: React.FC<ClaimCodeEntryProps> = ({ onActivated }) =
   return (
     <div className="bp-login-screen">
       <div className="bp-login-card">
-        <div className="bp-login-logo-wrap">
-          <div className="text-center">
-            <h1 className="bp-page-title">Claim Your Account</h1>
-            <p className="bp-overline mt-2">Enter Your Invitation Code</p>
-          </div>
-        </div>
+        <header className="bp-login-logo-wrap">
+          <img src="/logo.png" alt="Blueprint" className="bp-login-logo" />
+        </header>
 
         <div className="bp-login-body">
           <p className="bp-body-sm text-center text-muted-foreground">

@@ -15,10 +15,11 @@ export default async function handler(req: any, res: any) {
       req.query.salon_id as string | undefined
     );
 
-    const { service_variation_id, team_member_id, date } = req.query as {
+    const { service_variation_id, team_member_id, date, days } = req.query as {
       service_variation_id?: string;
       team_member_id?: string;
       date?: string;
+      days?: string;
     };
 
     if (!service_variation_id || !date) {
@@ -36,7 +37,63 @@ export default async function handler(req: any, res: any) {
     // 2. Resolve provider adapter for this salon
     const provider = await resolveProvider(client.salonId);
 
-    // 3. Fetch availability from provider
+    // If days param is provided, fetch availability across a date range
+    // Returns { available_dates: string[], slots_by_date: Record<string, TimeSlot[]> }
+    const numDays = days ? Math.min(parseInt(days, 10) || 1, 60) : 0;
+
+    if (numDays > 1) {
+      const availableDates: string[] = [];
+      const slotsByDate: Record<string, any[]> = {};
+
+      // Fetch each day in parallel (batched to avoid rate limits)
+      const startDate = new Date(date + 'T12:00:00Z');
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const datesToFetch: string[] = [];
+      for (let i = 0; i < numDays; i++) {
+        const d = new Date(startDate);
+        d.setDate(d.getDate() + i);
+        if (d >= today) {
+          datesToFetch.push(d.toISOString().split('T')[0]);
+        }
+      }
+
+      // Batch in groups of 7 to avoid overwhelming the provider
+      for (let i = 0; i < datesToFetch.length; i += 7) {
+        const batch = datesToFetch.slice(i, i + 7);
+        const results = await Promise.all(
+          batch.map(async (d) => {
+            try {
+              const slots = await provider.getAvailability({
+                salon_id: client.salonId,
+                service_variation_id,
+                team_member_id,
+                date: d,
+              });
+              return { date: d, slots };
+            } catch {
+              return { date: d, slots: [] };
+            }
+          })
+        );
+        for (const r of results) {
+          if (r.slots.length > 0) {
+            availableDates.push(r.date);
+            slotsByDate[r.date] = r.slots;
+          }
+        }
+      }
+
+      return res.status(200).json({
+        date,
+        days: numDays,
+        available_dates: availableDates,
+        slots_by_date: slotsByDate,
+      });
+    }
+
+    // 3. Fetch availability from provider (single date)
     const slots = await provider.getAvailability({
       salon_id: client.salonId,
       service_variation_id,

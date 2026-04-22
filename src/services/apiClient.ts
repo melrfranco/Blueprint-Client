@@ -17,6 +17,13 @@ export interface AvailabilityResponse {
   slots: TimeSlot[];
 }
 
+export interface RangeAvailabilityResponse {
+  date: string;
+  days: number;
+  available_dates: string[];
+  slots_by_date: Record<string, TimeSlot[]>;
+}
+
 export interface BookingResult {
   id: string | null;
   provider_booking_id: string;
@@ -140,6 +147,39 @@ export const apiClient = {
     const paramsObj = new URLSearchParams({
       service_variation_id: params.serviceVariationId,
       date: params.date,
+    });
+    if (params.teamMemberId) {
+      paramsObj.set('team_member_id', params.teamMemberId);
+    }
+
+    const response = await fetch(`${API_BASE}/bookings/availability?${paramsObj}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(data.message || 'Failed to fetch availability');
+    }
+
+    return data;
+  },
+
+  async getAvailabilityRange(params: {
+    serviceVariationId: string;
+    date: string;
+    days: number;
+    teamMemberId?: string;
+  }): Promise<RangeAvailabilityResponse> {
+    const token = await getAccessToken();
+    const paramsObj = new URLSearchParams({
+      service_variation_id: params.serviceVariationId,
+      date: params.date,
+      days: String(params.days),
     });
     if (params.teamMemberId) {
       paramsObj.set('team_member_id', params.teamMemberId);

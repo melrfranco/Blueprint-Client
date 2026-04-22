@@ -23,6 +23,7 @@ export const PlanView: React.FC = () => {
   const { plans, bookings, loading, refresh } = useClientData();
   const { bookingEligible } = useAuth();
   const [bookingService, setBookingService] = useState<Service | null>(null);
+  const [bookingAppointment, setBookingAppointment] = useState<PlanAppointment | undefined>(undefined);
   const [planIdForBooking, setPlanIdForBooking] = useState<string | undefined>(undefined);
   const [acceptingMembership, setAcceptingMembership] = useState(false);
   const [acceptError, setAcceptError] = useState<string | null>(null);
@@ -62,9 +63,12 @@ export const PlanView: React.FC = () => {
       <BookingFlow
         service={bookingService}
         planId={planIdForBooking}
+        appointment={bookingAppointment}
         onClose={() => {
           setBookingService(null);
+          setBookingAppointment(undefined);
           setPlanIdForBooking(undefined);
+          refresh();
         }}
       />
     );
@@ -245,6 +249,7 @@ export const PlanView: React.FC = () => {
                             <button
                               onClick={() => {
                                 setBookingService(bookable);
+                                setBookingAppointment(appt);
                                 setPlanIdForBooking(activePlan.id);
                               }}
                               className="bp-button bp-button-primary rounded-full text-xs px-3 py-1"

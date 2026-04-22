@@ -30,6 +30,7 @@
 import { createClient } from '@supabase/supabase-js';
 import type { BookingProvider } from './booking-provider';
 import { SquareBookingAdapter } from './square-booking-adapter';
+import { log } from './logger';
 
 interface ProviderConfig {
   provider_type: string;
@@ -50,9 +51,14 @@ export async function resolveProvider(salonId: string): Promise<BookingProvider>
     .eq('id', salonId)
     .maybeSingle();
 
+  log('PROVIDER_RESOLVE_START', { salonId });
+
   if (salonError || !salon?.owner_user_id) {
+    log('PROVIDER_SALON_NOT_FOUND', { salonId, error: salonError?.message });
     throw new Error('Salon not found');
   }
+
+  log('PROVIDER_SALON_FOUND', { salonId, ownerUserId: salon.owner_user_id });
 
   // Load provider config from salon_provider_config
   // This table maps salons to their booking provider settings.
@@ -66,18 +72,58 @@ export async function resolveProvider(salonId: string): Promise<BookingProvider>
   let config: ProviderConfig;
 
   if (providerConfig) {
+    log('PROVIDER_CONFIG_FOUND', { salonId, providerType: providerConfig.provider_type });
     config = {
       provider_type: providerConfig.provider_type,
       access_token: providerConfig.access_token,
       location_id: providerConfig.location_id,
     };
   } else {
-    // Fallback: resolve from merchant_settings (existing Square integration)
-    const { data: merchant } = await supabase
+    log('PROVIDER_NO_SALON_CONFIG', { salonId, ownerUserId: salon.owner_user_id });
+
+    // Try multiple resolution paths for merchant_settings
+    let merchant: any = null;
+
+    // Path 1: Direct lookup by salon owner_user_id
+    const { data: m1 } = await supabase
       .from('merchant_settings')
       .select('square_access_token, settings')
       .eq('supabase_user_id', salon.owner_user_id)
       .maybeSingle();
+    merchant = m1;
+
+    log('PROVIDER_MERCHANT_LOOKUP_OWNER', {
+      salonId,
+      ownerUserId: salon.owner_user_id,
+      found: !!merchant,
+      hasSquareAccessToken: !!merchant?.square_access_token,
+      settingsKeys: merchant?.settings ? Object.keys(merchant.settings) : [],
+    });
+
+    // Path 2: If owner_user_id didn't match, try salon_memberships owner/admin
+    if (!merchant?.square_access_token) {
+      const { data: adminMembership } = await supabase
+        .from('salon_memberships')
+        .select('user_id')
+        .eq('salon_id', salonId)
+        .in('role', ['owner', 'admin'])
+        .eq('status', 'active')
+        .limit(1)
+        .maybeSingle();
+
+      if (adminMembership?.user_id && adminMembership.user_id !== salon.owner_user_id) {
+        log('PROVIDER_TRYING_ADMIN_MEMBERSHIP', { salonId, adminUserId: adminMembership.user_id });
+        const { data: m2 } = await supabase
+          .from('merchant_settings')
+          .select('square_access_token, settings')
+          .eq('supabase_user_id', adminMembership.user_id)
+          .maybeSingle();
+        if (m2?.square_access_token) {
+          merchant = m2;
+          log('PROVIDER_FOUND_VIA_ADMIN_MEMBERSHIP', { salonId, adminUserId: adminMembership.user_id });
+        }
+      }
+    }
 
     const accessToken =
       merchant?.square_access_token ??
@@ -86,16 +132,45 @@ export async function resolveProvider(salonId: string): Promise<BookingProvider>
       null;
 
     if (!accessToken) {
+      log('PROVIDER_NO_CREDENTIALS', { salonId, ownerUserId: salon.owner_user_id });
       throw new Error('No provider credentials configured for this salon');
     }
 
-    // Resolve location_id from settings or default
-    const locationId =
+    // Resolve location_id from settings, or fetch dynamically from Square
+    let locationId =
       merchant?.settings?.square_location_id ??
       merchant?.settings?.oauth?.location_id ??
       '';
 
     if (!locationId) {
+      // Dynamically fetch location from Square (same approach as Blueprint Pro)
+      log('PROVIDER_FETCHING_LOCATION', { salonId });
+      try {
+        const squareBase = (process.env.SQUARE_ENV || 'production').toLowerCase() === 'sandbox'
+          ? 'https://connect.squareupsandbox.com'
+          : 'https://connect.squareup.com';
+        const locRes = await fetch(`${squareBase}/v2/locations`, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            'Square-Version': '2025-10-16',
+          },
+        });
+        if (locRes.ok) {
+          const locData = await locRes.json();
+          const activeLoc = locData.locations?.find((l: any) => l.status === 'ACTIVE');
+          if (activeLoc?.id) {
+            locationId = activeLoc.id;
+            log('PROVIDER_LOCATION_RESOLVED', { salonId, locationId });
+          }
+        }
+      } catch (e: any) {
+        log('PROVIDER_LOCATION_FETCH_FAILED', { salonId, error: e.message });
+      }
+    }
+
+    if (!locationId) {
+      log('PROVIDER_NO_LOCATION', { salonId });
       throw new Error('No provider location configured for this salon');
     }
 

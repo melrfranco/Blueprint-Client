@@ -1,6 +1,6 @@
 
 import { createClient } from '@supabase/supabase-js';
-import { log } from '../lib/logger.js';
+import { log } from '../_lib/logger.js';
 
 /**
  * POST /api/client/link-plans

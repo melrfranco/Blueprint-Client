@@ -1,7 +1,7 @@
 
-import { authenticateClient } from '../lib/auth-helpers';
-import { resolveProvider } from '../lib/provider-factory';
-import { log } from '../lib/logger';
+import { authenticateClient } from '../_lib/auth-helpers';
+import { resolveProvider } from '../_lib/provider-factory';
+import { log } from '../_lib/logger';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'GET') {

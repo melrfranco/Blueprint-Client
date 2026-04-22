@@ -1,7 +1,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { createHash } from 'crypto';
-import { log } from '../lib/logger.js';
+import { log } from '../_lib/logger.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL!;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;

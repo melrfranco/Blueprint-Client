@@ -20,8 +20,7 @@ export interface AvailabilityResponse {
 export interface RangeAvailabilityResponse {
   date: string;
   days: number;
-  available_dates: string[];
-  slots_by_date: Record<string, TimeSlot[]>;
+  slots: TimeSlot[];
 }
 
 export interface BookingResult {

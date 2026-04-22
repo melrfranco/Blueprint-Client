@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { apiClient } from '../services/apiClient';
 import type { TimeSlot } from '../services/apiClient';
 import type { Service, PlanAppointment } from '../types';
@@ -29,6 +29,7 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({ service, planId, appoi
     return new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   });
 
+  const [availableDates, setAvailableDates] = useState<Set<string>>(new Set());
   const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([]);
   const [selectedSlotTime, setSelectedSlotTime] = useState<string | null>(null);
 
@@ -38,6 +39,51 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({ service, planId, appoi
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   const variationId = service.variation_id;
+  const hasFetchedRef = useRef(false);
+
+  // Pro flow: fetch 30-day availability on mount to populate calendar
+  const fetchAvailabilityForCalendar = async () => {
+    if (!variationId) return;
+    setIsFetchingSlots(true);
+    setFetchError(null);
+    try {
+      const searchStart = appointment?.date
+        ? new Date(appointment.date)
+        : new Date();
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      if (searchStart < now) searchStart.setTime(now.getTime());
+
+      const startDate = searchStart.toISOString().split('T')[0];
+
+      const response = await apiClient.getAvailabilityRange({
+        serviceVariationId: variationId,
+        date: startDate,
+        days: 30,
+      });
+
+      // Extract unique dates from returned slots (same as Pro)
+      const dates = new Set<string>();
+      const slots = response.slots || [];
+      slots.forEach((s: TimeSlot) => {
+        dates.add(new Date(s.start_at).toISOString().split('T')[0]);
+      });
+      setAvailableDates(dates);
+      setBookingStep('select-date');
+    } catch (e: any) {
+      setFetchError(e?.message || 'Failed to fetch availability');
+    } finally {
+      setIsFetchingSlots(false);
+    }
+  };
+
+  // Fetch on mount (once)
+  useEffect(() => {
+    if (!hasFetchedRef.current && bookingEligible && variationId) {
+      hasFetchedRef.current = true;
+      fetchAvailabilityForCalendar();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // If not booking eligible, show blocked state
   if (!bookingEligible) {
@@ -249,18 +295,19 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({ service, planId, appoi
                         {calendarDays.map(day => {
                           const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                           const todayStr = new Date().toISOString().split('T')[0];
-                          const isFuture = dateStr >= todayStr;
+                          const isPast = dateStr < todayStr;
+                          const isAvailable = availableDates.has(dateStr);
                           const isSelected = bookingDate === dateStr;
 
                           return (
                             <button
                               key={day}
-                              disabled={!isFuture}
+                              disabled={isPast || !isAvailable}
                               onClick={() => { setBookingDate(dateStr); setFetchError(null); }}
                               className={`p-2 rounded-full font-bold text-sm aspect-square transition-all ${
                                 isSelected ? 'bg-primary text-primary-foreground scale-110 shadow-lg' :
-                                  isFuture ? 'bg-card text-foreground hover:opacity-70' :
-                                    'cursor-not-allowed opacity-50 bg-muted text-muted-foreground'
+                                  isAvailable ? 'bg-card text-foreground hover:opacity-70' :
+                                    'cursor-not-allowed opacity-30 bg-muted text-muted-foreground'
                               }`}
                             >
                               {day}

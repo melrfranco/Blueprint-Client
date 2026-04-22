@@ -38,37 +38,50 @@ export default async function handler(req: any, res: any) {
     const provider = await resolveProvider(client.salonId);
 
     // If days param is provided, fetch availability across a date range
-    // Uses a single provider API call spanning start_date → end_date
-    const numDays = days ? Math.min(parseInt(days, 10) || 1, 60) : 0;
+    // Uses the same single-date Square API call that the Pro uses, batched
+    const numDays = days ? Math.min(parseInt(days, 10) || 1, 45) : 0;
 
     if (numDays > 1) {
       const startDate = new Date(date + 'T12:00:00Z');
-      const endDate = new Date(startDate);
-      endDate.setDate(endDate.getDate() + numDays);
-      const endDateStr = endDate.toISOString().split('T')[0];
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
 
-      // Single API call for the entire range
-      const allSlots = await provider.getAvailabilityRange({
-        salon_id: client.salonId,
-        service_variation_id,
-        team_member_id,
-        start_date: date,
-        end_date: endDateStr,
-      });
+      const datesToFetch: string[] = [];
+      for (let i = 0; i < numDays; i++) {
+        const d = new Date(startDate);
+        d.setDate(d.getDate() + i);
+        if (d >= today) {
+          datesToFetch.push(d.toISOString().split('T')[0]);
+        }
+      }
 
-      // Group slots by date
-      const slotsByDate: Record<string, any[]> = {};
-      for (const slot of allSlots) {
-        const slotDate = slot.start_at.split('T')[0];
-        if (!slotsByDate[slotDate]) slotsByDate[slotDate] = [];
-        slotsByDate[slotDate].push(slot);
+      // Batch in groups of 5 to stay within Vercel timeout
+      const allSlots: any[] = [];
+      for (let i = 0; i < datesToFetch.length; i += 5) {
+        const batch = datesToFetch.slice(i, i + 5);
+        const results = await Promise.all(
+          batch.map(async (d) => {
+            try {
+              return await provider.getAvailability({
+                salon_id: client.salonId,
+                service_variation_id,
+                team_member_id,
+                date: d,
+              });
+            } catch {
+              return [];
+            }
+          })
+        );
+        for (const r of results) {
+          if (Array.isArray(r)) allSlots.push(...r);
+        }
       }
 
       return res.status(200).json({
         date,
         days: numDays,
-        available_dates: Object.keys(slotsByDate).sort(),
-        slots_by_date: slotsByDate,
+        slots: allSlots,
       });
     }
 

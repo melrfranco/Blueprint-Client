@@ -38,16 +38,19 @@ export class SquareBookingAdapter implements BookingProvider {
   async getAvailability(params: AvailabilityParams): Promise<TimeSlot[]> {
     const squareBase = getSquareBase();
 
-    // Square Booking API: Search availability
-    // https://developer.squareup.com/reference/square/booking-api/search-availability
+    // Match Pro's exact request format
+    const startAt = new Date(`${params.date}T00:00:00Z`).toISOString();
+    const endAt = new Date(`${params.date}T23:59:59Z`).toISOString();
+
     const body: any = {
       query: {
         filter: {
-          start_at_range: {
-            start_at: `${params.date}T00:00:00Z`,
-            end_at: `${params.date}T23:59:59Z`,
-          },
+          booking_id: '',
           location_id: this.locationId,
+          start_at_range: {
+            start_at: startAt,
+            end_at: endAt,
+          },
           segment_filters: [
             {
               service_variation_id: params.service_variation_id,
@@ -57,9 +60,12 @@ export class SquareBookingAdapter implements BookingProvider {
       },
     };
 
-    if (params.team_member_id) {
-      body.query.filter.segment_filters[0].team_member_id = params.team_member_id;
-    }
+    log('SQUARE_AVAILABILITY_REQUEST', {
+      locationId: this.locationId,
+      startAt,
+      endAt,
+      serviceVariationId: params.service_variation_id,
+    });
 
     const res = await fetch(`${squareBase}/v2/bookings/availability/search`, {
       method: 'POST',
@@ -72,21 +78,21 @@ export class SquareBookingAdapter implements BookingProvider {
     });
 
     if (!res.ok) {
-      const err = await res.json();
-      log('SQUARE_AVAILABILITY_FAILED', { status: res.status, errors: err.errors?.map((e: any) => e.code) });
-      throw new Error('Failed to fetch availability from provider');
+      const errText = await res.text();
+      log('SQUARE_AVAILABILITY_FAILED', { status: res.status, error: errText.substring(0, 500) });
+      throw new Error(`Failed to fetch availability from provider (${res.status})`);
     }
 
     const data = await res.json();
     const availabilities = data.availabilities || [];
 
-    return availabilities
-      .filter((a: any) => a.status === 'AVAILABLE')
-      .map((a: any) => ({
-        start_at: a.start_at,
-        end_at: a.end_at || a.start_at, // Square may not always return end_at
-        available: true,
-      }));
+    log('SQUARE_AVAILABILITY_OK', { count: availabilities.length });
+
+    return availabilities.map((a: any) => ({
+      start_at: a.start_at,
+      end_at: a.end_at || a.start_at,
+      available: true,
+    }));
   }
 
   async getAvailabilityRange(params: RangeAvailabilityParams): Promise<TimeSlot[]> {

@@ -1,10 +1,9 @@
-import { supabase } from '../lib/supabase';
+import { getCachedAccessToken } from '../lib/supabase';
 
 const API_BASE = '/api';
 
 async function getAccessToken(): Promise<string | null> {
-  const { data: { session } } = await supabase.auth.getSession();
-  return session?.access_token ?? null;
+  return getCachedAccessToken();
 }
 
 export interface TimeSlot {

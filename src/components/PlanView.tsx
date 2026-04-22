@@ -124,12 +124,23 @@ export const PlanView: React.FC = () => {
               <h3 className="bp-section-title mb-1">Plan Summary</h3>
               <p className="bp-body-sm">
                 {activePlan.appointments.length} appointment
-                {activePlan.appointments.length !== 1 ? 's' : ''} planned
+                {activePlan.appointments.length !== 1 ? 's' : ''} this year
               </p>
               {activePlan.totalCost > 0 && (
-                <p className="bp-caption text-muted-foreground mt-0.5">
-                  Total value: ${activePlan.totalCost.toFixed(2)}
-                </p>
+                <div className="flex items-center gap-4 mt-1">
+                  <div>
+                    <p className="bp-overline">Per Visit</p>
+                    <p className="bp-stat-value text-lg">
+                      ${(activePlan.totalCost / Math.max(activePlan.appointments.length, 1)).toFixed(0)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="bp-overline">Monthly</p>
+                    <p className="bp-stat-value text-lg">
+                      ${(activePlan.totalCost / 12).toFixed(0)}
+                    </p>
+                  </div>
+                </div>
               )}
             </div>
           </div>

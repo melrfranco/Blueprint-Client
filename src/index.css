@@ -343,9 +343,9 @@
 
   .bp-card {
     @apply relative rounded-[1.25rem] border;
-    background: var(--panel);
-    color: var(--panel-foreground);
-    border-color: var(--panel-border);
+    background: var(--card);
+    color: var(--card-foreground);
+    border-color: var(--card-border);
     box-shadow: var(--surface-shadow);
   }
 
@@ -354,7 +354,7 @@
     position: absolute;
     inset: 1px;
     border-radius: inherit;
-    border: 1px solid color-mix(in oklab, var(--panel-inner-border) 55%, transparent);
+    border: 1px solid color-mix(in oklab, var(--panel-inner-border) 30%, transparent);
     pointer-events: none;
   }
 

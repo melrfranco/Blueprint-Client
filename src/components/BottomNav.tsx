@@ -4,6 +4,7 @@ import { HomeIcon, CalendarIcon, ProfileIcon, GiftIcon } from './icons';
 interface BottomNavProps {
   activeTab: string;
   onChange: (tab: string) => void;
+  membershipOffered?: boolean;
 }
 
 const NAV_ITEMS = [
@@ -13,7 +14,7 @@ const NAV_ITEMS = [
   { id: 'profile', label: 'Profile', icon: ProfileIcon },
 ];
 
-export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onChange }) => {
+export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onChange, membershipOffered }) => {
   return (
     <nav className="bp-bottomnav fixed bottom-0 left-0 right-0 z-50">
       <div className="max-w-4xl mx-auto px-4 py-2">
@@ -21,15 +22,21 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onChange }) => 
           {NAV_ITEMS.map((item) => {
             const isActive = activeTab === item.id;
             const Icon = item.icon;
+            const showBadge = item.id === 'plan' && membershipOffered;
             
             return (
               <button
                 key={item.id}
                 onClick={() => onChange(item.id)}
                 aria-current={isActive ? 'page' : undefined}
-                className="flex flex-col items-center gap-1 px-4 py-2 rounded-full transition-all"
+                className="flex flex-col items-center gap-1 px-4 py-2 rounded-full transition-all relative"
               >
-                <Icon className="w-6 h-6" />
+                <div className="relative">
+                  <Icon className="w-6 h-6" />
+                  {showBadge && (
+                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-accent rounded-full border-2 border-[var(--bottomnav)]" />
+                  )}
+                </div>
                 <span className="text-xs font-semibold uppercase tracking-wider">
                   {item.label}
                 </span>

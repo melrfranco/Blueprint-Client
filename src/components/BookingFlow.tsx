@@ -229,7 +229,7 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({ service, planId, appoi
             </button>
           )}
           <h2 className="text-xl font-bold text-center">Book Appointment</h2>
-          <p className="bp-caption text-center uppercase tracking-widest mt-1 text-primary-foreground/80">
+          <p className="bp-caption text-center uppercase tracking-widest mt-1 text-primary-foreground">
             {bookingStep === 'select-date' ? 'Select your appointment date' :
               bookingStep === 'select-period' ? 'What time of day do you prefer?' :
                 bookingStep === 'select-slot' ? 'Choose your perfect opening' :

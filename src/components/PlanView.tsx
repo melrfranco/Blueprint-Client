@@ -135,52 +135,34 @@ export const PlanView: React.FC = () => {
           </div>
         </div>
 
-        {/* Membership status */}
-        {(membershipIsOffered || membershipIsActive) && (
-          <div
-            className={`bp-card bp-card-padding-md ${
-              membershipIsActive ? 'border-primary/20' : 'border-secondary/20'
-            }`}
-          >
-            <div className="flex items-start gap-4">
-              <div
-                className={`p-3 rounded-full ${
-                  membershipIsActive ? 'bg-primary/10' : 'bg-secondary/10'
-                }`}
+        {/* Membership status — compact banner */}
+        {membershipIsActive && (
+          <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/10 rounded-full">
+            <CheckCircleIcon className="w-5 h-5 text-primary flex-shrink-0" />
+            <span className="bp-body-sm font-semibold text-primary">Active Member</span>
+          </div>
+        )}
+        {membershipIsOffered && (
+          <div className="flex items-center gap-3 px-4 py-2.5 bg-secondary/10 rounded-full">
+            <StarIcon className="w-5 h-5 text-secondary flex-shrink-0" />
+            <span className="bp-body-sm font-semibold text-secondary-foreground flex-1">Membership offer pending</span>
+            <div className="flex items-center gap-2">
+              {acceptError && (
+                <span className="bp-caption text-destructive">{acceptError}</span>
+              )}
+              <button
+                onClick={handleAcceptMembership}
+                disabled={acceptingMembership}
+                className="bp-button bp-button-primary rounded-full text-xs px-3 py-1 disabled:opacity-60"
               >
-                {membershipIsActive ? (
-                  <CheckCircleIcon className="w-6 h-6 text-primary" />
-                ) : (
-                  <StarIcon className="w-6 h-6 text-secondary" />
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="bp-section-title mb-1">
-                  {membershipIsActive ? 'Active Membership' : 'Membership Offer'}
-                </h3>
-                <p className="bp-body-sm text-muted-foreground">
-                  {membershipIsActive
-                    ? 'You are an active member. Enjoy your perks and discounts.'
-                    : 'Your salon has invited you to join their membership program.'}
-                </p>
-
-                {membershipIsOffered && (
-                  <div className="mt-4 space-y-2">
-                    {acceptError && (
-                      <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-2xl">
-                        <p className="bp-caption text-destructive">{acceptError}</p>
-                      </div>
-                    )}
-                    <button
-                      onClick={handleAcceptMembership}
-                      disabled={acceptingMembership}
-                      className="bp-button bp-button-primary w-full disabled:opacity-60"
-                    >
-                      {acceptingMembership ? 'Accepting...' : 'Accept Membership'}
-                    </button>
-                  </div>
-                )}
-              </div>
+                {acceptingMembership ? '...' : 'Accept'}
+              </button>
+              <button
+                onClick={() => {/* TODO: decline/postpone */}}
+                className="bp-caption text-muted-foreground hover:text-foreground transition-colors underline"
+              >
+                Later
+              </button>
             </div>
           </div>
         )}
@@ -224,6 +206,9 @@ export const PlanView: React.FC = () => {
                 } : null;
                 const variationId = planVariationId;
                 const alreadyBooked = variationId ? bookedVariationIds.has(variationId) : false;
+                const isPast = appt.date instanceof Date
+                  ? appt.date.getTime() < Date.now()
+                  : new Date(appt.date).getTime() < Date.now();
 
                 return (
                   <div key={appt.id || idx} className="bp-card bp-card-padding-sm">
@@ -259,7 +244,11 @@ export const PlanView: React.FC = () => {
                         )}
 
                         <div className="mt-3 flex items-center gap-2">
-                          {alreadyBooked ? (
+                          {isPast ? (
+                            <span className="bp-caption uppercase tracking-widest px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                              Past
+                            </span>
+                          ) : alreadyBooked ? (
                             <span className="bp-caption uppercase tracking-widest px-2 py-0.5 rounded-full bg-primary/10 text-primary">
                               Booked
                             </span>

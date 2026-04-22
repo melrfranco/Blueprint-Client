@@ -230,7 +230,7 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
       </div>
 
       {/* Chart area */}
-      <div className="flex items-end gap-1.5 h-48 px-1 overflow-x-auto">
+      <div className="flex items-end justify-center gap-1 h-48 px-1 overflow-x-auto">
         {visitsFilled.map((visit, vi) => {
           const totalHeightPct = maxTotal > 0 ? (visit.total / maxTotal) * 100 : 0;
           const isDivider = vi === dividerIndex && dividerIndex > 0;
@@ -240,15 +240,15 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
               {isDivider && (
                 <div className="flex-shrink-0 w-px self-stretch bg-border mx-0.5" />
               )}
-              <div className="flex-shrink-0 flex flex-col items-center h-full justify-end" style={{ width: `${100 / Math.max(visitsFilled.length, 1)}%`, minWidth: '32px', maxWidth: '56px' }}>
+              <div className="flex-shrink-0 flex flex-col items-center h-full justify-end" style={{ minWidth: '28px', maxWidth: '48px', width: `${100 / Math.max(visitsFilled.length, 1)}%` }}>
                 {/* Total label above bar */}
-                <span className={`text-[9px] font-bold mb-0.5 whitespace-nowrap ${visit.isUpcoming ? 'text-primary' : 'text-muted-foreground'}`}>
+                <span className={`text-[8px] font-bold mb-0.5 whitespace-nowrap ${visit.isUpcoming ? 'text-primary' : 'text-muted-foreground'}`}>
                   {tab === 'duration' ? formatDuration(visit.total) : formatCost(visit.total)}
                 </span>
 
                 {/* Stacked bar */}
                 <div
-                  className="w-full relative group rounded-t-xl overflow-hidden transition-all duration-500"
+                  className="w-full relative rounded-t-lg overflow-hidden transition-all duration-500"
                   style={{
                     height: `${Math.max(totalHeightPct, 4)}%`,
                     opacity: visit.isUpcoming ? 1 : 0.5,
@@ -262,31 +262,20 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
                     return (
                       <div
                         key={si}
-                        className="w-full transition-all duration-300 relative"
+                        className="w-full transition-all duration-300"
                         style={{
                           height: `${segPct}%`,
                           backgroundColor: color,
                           borderTop: si > 0 ? '1px solid rgba(255,255,255,0.3)' : undefined,
                         }}
-                      >
-                        {/* Segment label if tall enough */}
-                        {segPct > 20 && (
-                          <span className="absolute inset-0 flex items-center justify-center text-white text-[7px] font-bold leading-none pointer-events-none drop-shadow-sm">
-                            {seg.name.split(' — ')[0].slice(0, 7)}
-                          </span>
-                        )}
-                        {/* Tooltip */}
-                        <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 whitespace-nowrap bg-foreground/90 text-background text-[8px] font-semibold px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                          {seg.name}: {tab === 'duration' ? formatDuration(seg.value) : formatCost(seg.value)}
-                        </div>
-                      </div>
+                      />
                     );
                   })}
                 </div>
 
                 {/* Visit label */}
                 <span
-                  className={`text-[8px] font-semibold uppercase tracking-wide mt-1 text-center leading-tight truncate w-full ${
+                  className={`text-[7px] font-semibold uppercase tracking-wide mt-1 text-center leading-tight truncate w-full ${
                     visit.isUpcoming ? 'text-primary' : 'text-muted-foreground'
                   }`}
                 >

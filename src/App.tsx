@@ -2,7 +2,7 @@ import React, { useState, Component, ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, useSearchParams, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
-import { ClientDataProvider } from './contexts/ClientDataContext';
+import { ClientDataProvider, useClientData } from './contexts/ClientDataContext';
 import { LoginScreen } from './components/LoginScreen';
 import { ActivationScreen } from './components/ActivationScreen';
 import { ClaimCodeEntry } from './components/ClaimCodeEntry';
@@ -70,6 +70,10 @@ const ClaimRoute: React.FC = () => {
 
 const AuthenticatedShell: React.FC = () => {
   const [activeTab, setActiveTab] = useState('home');
+  const { plans } = useClientData();
+
+  const activePlan = plans.find((p) => p.status === 'active') || plans[0];
+  const membershipOffered = activePlan?.membershipStatus === 'offered';
 
   const renderContent = () => {
     switch (activeTab) {
@@ -89,7 +93,7 @@ const AuthenticatedShell: React.FC = () => {
   return (
     <div className="bp-app-shell">
       {renderContent()}
-      <BottomNav activeTab={activeTab} onChange={setActiveTab} />
+      <BottomNav activeTab={activeTab} onChange={setActiveTab} membershipOffered={membershipOffered} />
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import { apiClient } from '../services/apiClient';
 import type { TimeSlot } from '../services/apiClient';
 import type { Service, PlanAppointment } from '../types';
@@ -29,8 +29,6 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({ service, planId, appoi
     return new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   });
 
-  const [availableDates, setAvailableDates] = useState<Set<string>>(new Set());
-  const [slotsByDate, setSlotsByDate] = useState<Record<string, TimeSlot[]>>({});
   const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([]);
   const [selectedSlotTime, setSelectedSlotTime] = useState<string | null>(null);
 
@@ -40,41 +38,6 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({ service, planId, appoi
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   const variationId = service.variation_id;
-  const hasFetchedRef = useRef(false);
-
-  const fetchAvailabilityForCalendar = async () => {
-    if (!variationId) return;
-    setIsFetchingSlots(true);
-    setFetchError(null);
-    try {
-      const startDate = appointment?.date
-        ? new Date(appointment.date).toISOString().split('T')[0]
-        : new Date().toISOString().split('T')[0];
-
-      const response = await apiClient.getAvailabilityRange({
-        serviceVariationId: variationId,
-        date: startDate,
-        days: 30,
-      });
-
-      const dates = new Set(response.available_dates || []);
-      setAvailableDates(dates);
-      setSlotsByDate(response.slots_by_date || {});
-      setBookingStep('select-date');
-    } catch (e: any) {
-      setFetchError(e?.message || 'Failed to fetch availability');
-    } finally {
-      setIsFetchingSlots(false);
-    }
-  };
-
-  // Start fetching availability on mount (once)
-  useEffect(() => {
-    if (!hasFetchedRef.current && bookingEligible && variationId) {
-      hasFetchedRef.current = true;
-      fetchAvailabilityForCalendar();
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // If not booking eligible, show blocked state
   if (!bookingEligible) {
@@ -122,20 +85,16 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({ service, planId, appoi
     setIsFetchingSlots(true);
     setFetchError(null);
     try {
-      // Use cached slots if available from range query
-      if (slotsByDate[dateStr]?.length) {
-        setAvailableSlots(slotsByDate[dateStr]);
-        setBookingStep('select-period');
-        setIsFetchingSlots(false);
-        return;
-      }
-      // Otherwise fetch single date
       const response = await apiClient.getAvailability({
-        serviceVariationId: variationId,
+        serviceVariationId: variationId!,
         date: dateStr,
       });
       setAvailableSlots(response.slots || []);
-      setBookingStep('select-period');
+      if ((response.slots || []).length === 0) {
+        setFetchError('No openings available on this date. Try another day.');
+      } else {
+        setBookingStep('select-period');
+      }
     } catch (e: any) {
       setFetchError(e?.message || 'Failed to fetch time slots');
     } finally {
@@ -289,17 +248,18 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({ service, planId, appoi
                         {calendarBlanks.map((_, i) => <div key={`blank-${i}`}></div>)}
                         {calendarDays.map(day => {
                           const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                          const isAvailable = availableDates.has(dateStr);
+                          const todayStr = new Date().toISOString().split('T')[0];
+                          const isFuture = dateStr >= todayStr;
                           const isSelected = bookingDate === dateStr;
 
                           return (
                             <button
                               key={day}
-                              disabled={!isAvailable}
-                              onClick={() => setBookingDate(dateStr)}
+                              disabled={!isFuture}
+                              onClick={() => { setBookingDate(dateStr); setFetchError(null); }}
                               className={`p-2 rounded-full font-bold text-sm aspect-square transition-all ${
                                 isSelected ? 'bg-primary text-primary-foreground scale-110 shadow-lg' :
-                                  isAvailable ? 'bg-card text-foreground hover:opacity-70' :
+                                  isFuture ? 'bg-card text-foreground hover:opacity-70' :
                                     'cursor-not-allowed opacity-50 bg-muted text-muted-foreground'
                               }`}
                             >
@@ -317,7 +277,7 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({ service, planId, appoi
                         bookingDate ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
                       }`}
                     >
-                      {isFetchingSlots ? 'Finding openings...' : 'Confirm Date'}
+                      {isFetchingSlots ? 'Finding openings...' : 'Find Openings'}
                     </button>
                   </div>
                 )

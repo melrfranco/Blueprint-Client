@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import type { BookingRecord } from '../types';
 
 type TabKey = 'duration' | 'cost';
@@ -9,64 +9,131 @@ interface ComparisonChartProps {
   maxPast?: number;
 }
 
-// Blueprint palette — distinct, on-brand colors for each service slot
-const SERVICE_COLORS = [
-  '#0B3559', // deep navy (primary)
-  '#5B9EC9', // sky blue (accent)
-  '#2B7A9E', // teal blue
+// Blueprint on-brand palette for stacked segments
+const SEGMENT_COLORS = [
+  '#0B3559', // deep navy
+  '#5B9EC9', // sky blue
+  '#2B7A9E', // teal
   '#8FB8D4', // light blue
   '#1A5276', // dark teal
   '#A9CCE3', // pale blue
+  '#3A7CA5', // medium blue
+  '#6BA3C0', // soft steel
 ];
+
+interface Visit {
+  label: string;
+  dateKey: string;
+  bookings: BookingRecord[];
+  isUpcoming: boolean;
+  total: number; // total value for current tab
+}
 
 export const ComparisonChart: React.FC<ComparisonChartProps> = ({
   upcoming,
   past,
-  maxPast = 5,
+  maxPast = 6,
 }) => {
   const [tab, setTab] = useState<TabKey>('duration');
 
-  // Collect all unique service names across all bookings to assign colors consistently
-  const allBookings = [
+  // Collect all bookings for color assignment
+  const allBookings = useMemo(() => [
     ...past.filter((b) => !b.status.startsWith('CANCELLED')),
     ...(upcoming ? [upcoming] : []),
-  ];
+  ], [past, upcoming]);
 
-  const serviceNames = Array.from(new Set(allBookings.map((b) => b.service_name ?? 'Service')));
-  const serviceColorMap = new Map(serviceNames.map((name, i) => [name, SERVICE_COLORS[i % SERVICE_COLORS.length]]));
-
-  // Build visit groups: past (oldest→newest) + upcoming at the end
-  const recentPast = past
-    .filter((b) => !b.status.startsWith('CANCELLED'))
-    .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime())
-    .slice(-maxPast);
-
-  interface Visit {
-    label: string;
-    bookings: BookingRecord[];
-    isUpcoming: boolean;
-  }
-
-  // Group by date (each past booking is its own visit for now)
-  const visits: Visit[] = [
-    ...recentPast.map((b, i) => ({
-      label: shortDate(b.start_at, i, recentPast.length),
-      bookings: [b],
-      isUpcoming: false,
-    })),
-    ...(upcoming ? [{ label: 'Next', bookings: [upcoming], isUpcoming: true }] : []),
-  ];
-
-  // Max value across all bars for scale
-  const allVals = allBookings.map((b) =>
-    tab === 'duration' ? (b.service_duration ?? 0) : (b.service_cost ?? 0)
+  // Assign each unique service name a consistent color
+  const serviceNames = useMemo(() =>
+    Array.from(new Set(allBookings.map((b) => b.service_name ?? 'Service'))),
+    [allBookings]
   );
-  const maxVal = Math.max(...allVals, 1);
+  const serviceColorMap = useMemo(() =>
+    new Map(serviceNames.map((name, i) => [name, SEGMENT_COLORS[i % SEGMENT_COLORS.length]])),
+    [serviceNames]
+  );
 
-  // Comparison summary
-  const summary = getSummary(upcoming, recentPast, tab);
+  // Group past bookings by date key (YYYY-MM-DD)
+  const visits: Visit[] = useMemo(() => {
+    const pastFiltered = past
+      .filter((b) => !b.status.startsWith('CANCELLED'))
+      .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime());
 
-  if (visits.length === 0) return null;
+    // Group by date
+    const groups = new Map<string, BookingRecord[]>();
+    for (const b of pastFiltered) {
+      const key = dateKey(b.start_at);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(b);
+    }
+
+    // Take most recent N visits
+    const entries = Array.from(groups.entries()).slice(-maxPast);
+
+    const result: Visit[] = entries.map(([key, bks]) => ({
+      label: shortDate(bks[0].start_at),
+      dateKey: key,
+      bookings: bks,
+      isUpcoming: false,
+      total: 0, // computed below after tab
+    }));
+
+    // Add upcoming as last visit
+    if (upcoming) {
+      result.push({
+        label: 'Next',
+        dateKey: 'upcoming',
+        bookings: [upcoming],
+        isUpcoming: true,
+        total: 0,
+      });
+    }
+
+    return result;
+  }, [past, upcoming, maxPast]);
+
+  // Compute totals per visit for current tab
+  const visitsWithTotals = useMemo(() =>
+    visits.map((v) => ({
+      ...v,
+      total: v.bookings.reduce((sum, b) => {
+        const val = tab === 'duration' ? (b.service_duration ?? 0) : (b.service_cost ?? 0);
+        return sum + val;
+      }, 0),
+    })),
+    [visits, tab]
+  );
+
+  // Max total across all visits for scale
+  const maxTotal = Math.max(...visitsWithTotals.map((v) => v.total), 1);
+
+  // Summary comparison
+  const summary = useMemo(() => {
+    const upcomingVisit = visitsWithTotals.find((v) => v.isUpcoming);
+    const pastVisits = visitsWithTotals.filter((v) => !v.isUpcoming);
+    if (!upcomingVisit || pastVisits.length === 0) return null;
+    const avg = pastVisits.reduce((s, v) => s + v.total, 0) / pastVisits.length;
+    if (avg === 0) return null;
+    const ratio = upcomingVisit.total / avg;
+    if (tab === 'duration') {
+      if (ratio < 0.4) return 'Much shorter than your average visit';
+      if (ratio < 0.65) return 'About half as long as your average visit';
+      if (ratio < 0.85) return 'A bit shorter than your average visit';
+      if (ratio <= 1.15) return 'About the same length as your average visit';
+      if (ratio <= 1.5) return 'A bit longer than your average visit';
+      if (ratio <= 2.0) return 'About twice as long as your average visit';
+      return 'Much longer than your average visit';
+    } else {
+      if (ratio < 0.4) return 'Much less than your average visit';
+      if (ratio < 0.65) return 'About half the cost of your average visit';
+      if (ratio < 0.85) return 'A bit less than your average visit';
+      if (ratio <= 1.15) return 'About the same cost as your average visit';
+      if (ratio <= 1.5) return 'A bit more than your average visit';
+      if (ratio <= 2.0) return 'About twice the cost of your average visit';
+      return 'Much more than your average visit';
+    }
+  }, [visitsWithTotals, tab]);
+
+  if (visitsWithTotals.length === 0) return null;
 
   return (
     <div className="w-full select-none">
@@ -80,7 +147,7 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
               : 'text-muted-foreground'
           }`}
         >
-          Duration
+          Time
         </button>
         <button
           onClick={() => setTab('cost')}
@@ -95,53 +162,65 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
       </div>
 
       {/* Chart area */}
-      <div className="flex items-end gap-3 h-36 px-1">
-        {visits.map((visit, vi) => (
-          <div key={vi} className="flex-1 flex flex-col items-center gap-0.5 h-full justify-end">
-            {/* Bars for each service in this visit */}
-            <div className="flex items-end gap-0.5 w-full justify-center h-full">
-              {visit.bookings.map((b, bi) => {
-                const val = tab === 'duration' ? (b.service_duration ?? 0) : (b.service_cost ?? 0);
-                const heightPct = maxVal > 0 ? (val / maxVal) * 100 : 0;
-                const color = serviceColorMap.get(b.service_name ?? 'Service') ?? SERVICE_COLORS[0];
-                const opacity = visit.isUpcoming ? '1' : '0.55';
-                return (
-                  <div
-                    key={bi}
-                    className="flex-1 rounded-t-lg transition-all duration-500 relative group"
-                    style={{
-                      height: `${Math.max(heightPct, 4)}%`,
-                      backgroundColor: color,
-                      opacity,
-                      maxWidth: '28px',
-                    }}
-                  >
-                    {/* Tooltip on hover */}
-                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap bg-foreground text-background text-[9px] font-semibold px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                      {tab === 'duration' ? formatDuration(val) : formatCost(val)}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+      <div className="flex items-end gap-3 h-40 px-1">
+        {visitsWithTotals.map((visit, vi) => {
+          const totalHeightPct = maxTotal > 0 ? (visit.total / maxTotal) * 100 : 0;
+          return (
+            <div key={vi} className="flex-1 flex flex-col items-center h-full justify-end">
+              {/* Total label above bar */}
+              <span className={`text-[9px] font-bold mb-0.5 ${visit.isUpcoming ? 'text-primary' : 'text-muted-foreground'}`}>
+                {tab === 'duration' ? formatDuration(visit.total) : formatCost(visit.total)}
+              </span>
 
-            {/* Visit label */}
-            <span
-              className={`text-[9px] font-semibold uppercase tracking-wide mt-1 text-center leading-tight ${
-                visit.isUpcoming ? 'text-primary' : 'text-muted-foreground'
-              }`}
-            >
-              {visit.label}
-            </span>
-          </div>
-        ))}
+              {/* Stacked bar */}
+              <div
+                className="w-full relative group rounded-t-lg overflow-hidden transition-all duration-500"
+                style={{
+                  height: `${Math.max(totalHeightPct, 3)}%`,
+                  maxWidth: '48px',
+                  opacity: visit.isUpcoming ? 1 : 0.6,
+                }}
+              >
+                {visit.bookings.map((b, bi) => {
+                  const val = tab === 'duration' ? (b.service_duration ?? 0) : (b.service_cost ?? 0);
+                  const segPct = visit.total > 0 ? (val / visit.total) * 100 : 0;
+                  const color = serviceColorMap.get(b.service_name ?? 'Service') ?? SEGMENT_COLORS[0];
+                  return (
+                    <div
+                      key={bi}
+                      className="w-full transition-all duration-300 relative"
+                      style={{
+                        height: `${segPct}%`,
+                        backgroundColor: color,
+                      }}
+                    >
+                      {/* Segment tooltip */}
+                      <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 whitespace-nowrap bg-foreground/90 text-background text-[8px] font-semibold px-1 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                        {b.service_name}: {tab === 'duration' ? formatDuration(val) : formatCost(val)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Visit label */}
+              <span
+                className={`text-[9px] font-semibold uppercase tracking-wide mt-1 text-center leading-tight ${
+                  visit.isUpcoming ? 'text-primary' : 'text-muted-foreground'
+                }`}
+              >
+                {visit.label}
+              </span>
+            </div>
+          );
+        })}
       </div>
 
       {/* Y-axis hint */}
-      <div className="flex justify-between mt-1 px-1">
+      <div className="flex justify-between mt-0.5 px-1">
         <span className="text-[9px] text-muted-foreground">0</span>
         <span className="text-[9px] text-muted-foreground">
-          {tab === 'duration' ? formatDuration(maxVal) : formatCost(maxVal)}
+          {tab === 'duration' ? formatDuration(maxTotal) : formatCost(maxTotal)}
         </span>
       </div>
 
@@ -166,58 +245,28 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
   );
 };
 
-function shortDate(iso: string, index: number, total: number): string {
+function dateKey(iso: string): string {
   try {
-    const d = new Date(iso);
-    // Show month/day for the last few; for older ones just show index
-    if (total <= 5 || index >= total - 4) {
-      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    }
-    return `Visit ${index + 1}`;
+    return new Date(iso).toISOString().slice(0, 10);
   } catch {
-    return `Visit ${index + 1}`;
+    return iso;
   }
 }
 
-function getSummary(
-  upcoming: BookingRecord | undefined,
-  past: BookingRecord[],
-  tab: TabKey,
-): string | null {
-  if (!upcoming || past.length === 0) return null;
-  const currentVal = tab === 'duration' ? upcoming.service_duration : upcoming.service_cost;
-  if (currentVal == null) return null;
-  const pastVals = past
-    .map((b) => (tab === 'duration' ? b.service_duration : b.service_cost))
-    .filter((v): v is number => v != null);
-  if (pastVals.length === 0) return null;
-  const avg = pastVals.reduce((a, b) => a + b, 0) / pastVals.length;
-  const ratio = currentVal / avg;
-  if (tab === 'duration') {
-    if (ratio < 0.4) return 'Much shorter than your average visit';
-    if (ratio < 0.65) return 'About half as long as your average visit';
-    if (ratio < 0.85) return 'A bit shorter than your average visit';
-    if (ratio <= 1.15) return 'About the same length as your average visit';
-    if (ratio <= 1.5) return 'A bit longer than your average visit';
-    if (ratio <= 2.0) return 'About twice as long as your average visit';
-    return 'Much longer than your average visit';
-  } else {
-    if (ratio < 0.4) return 'Much less than your average visit';
-    if (ratio < 0.65) return 'About half the cost of your average visit';
-    if (ratio < 0.85) return 'A bit less than your average visit';
-    if (ratio <= 1.15) return 'About the same cost as your average visit';
-    if (ratio <= 1.5) return 'A bit more than your average visit';
-    if (ratio <= 2.0) return 'About twice the cost of your average visit';
-    return 'Much more than your average visit';
+function shortDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  } catch {
+    return 'Visit';
   }
 }
 
 export function formatDuration(minutes: number | undefined): string {
   if (!minutes) return '—';
-  if (minutes < 60) return `${minutes} min`;
+  if (minutes < 60) return `${minutes}m`;
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  return m > 0 ? `${h}h${m}m` : `${h}h`;
 }
 
 export function formatCost(cents: number | undefined): string {

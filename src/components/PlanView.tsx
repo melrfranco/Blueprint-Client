@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { BookingFlow } from './BookingFlow';
 import { CalendarIcon, GiftIcon } from './icons';
 import { ComparisonChart } from './ComparisonBar';
+import type { ChartBarData } from './ComparisonBar';
 import type { Service, PlanAppointment } from '../types';
 
 function formatDateLong(date: Date): string {
@@ -153,7 +154,8 @@ export const PlanView: React.FC = () => {
               planAppointments={activePlan.appointments}
               pastBookings={pastBookings}
               allBookings={bookings}
-              onBarClick={(appt) => {
+              onBarClick={(data: ChartBarData) => {
+                const appt = data.appointment;
                 const primaryService = appt.services?.[0];
                 if (!primaryService) return;
                 const planVariationId = primaryService.variation_id || primaryService.id;
@@ -251,9 +253,25 @@ export const PlanView: React.FC = () => {
 
                         <div className="mt-3 flex items-center gap-2">
                           {alreadyBooked ? (
-                            <span className="bp-caption uppercase tracking-widest px-2 py-0.5 rounded-full bg-primary/10 text-primary">
-                              Booked
-                            </span>
+                            <>
+                              <span className="bp-caption uppercase tracking-widest px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                                Booked
+                              </span>
+                              {bookingEligible && (
+                                <button
+                                  onClick={() => {
+                                    if (bookable) {
+                                      setBookingService(bookable);
+                                      setBookingAppointment(appt);
+                                      setPlanIdForBooking(activePlan.id);
+                                    }
+                                  }}
+                                  className="bp-button rounded-full text-xs px-3 py-1 bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                                >
+                                  Reschedule
+                                </button>
+                              )}
+                            </>
                           ) : bookable && bookingEligible ? (
                             <button
                               onClick={() => {

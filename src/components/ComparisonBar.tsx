@@ -4,13 +4,27 @@ import type { BookingRecord, PlanAppointment } from '../types';
 
 type TabKey = 'duration' | 'cost';
 
+/** Enriched data passed back on bar click */
+export interface ChartBarData {
+  appointment: PlanAppointment;
+  isPast: boolean;
+  isBooked: boolean;
+  isCompleted: boolean;
+  /** For past: actual booking date. For future booked: scheduled date */
+  actualDate?: string;
+  /** The planned date from the plan */
+  plannedDate?: string;
+  /** Matching bookings for this bar */
+  matchingBookings: BookingRecord[];
+}
+
 interface ComparisonChartProps {
   planAppointments: PlanAppointment[];
   pastBookings: BookingRecord[];
   /** All bookings (used to mark which upcoming bars are already booked) */
   allBookings?: BookingRecord[];
-  /** Called when user clicks a bar for an upcoming (non-placeholder) appointment */
-  onBarClick?: (appt: PlanAppointment) => void;
+  /** Called when user clicks any bar with real data */
+  onBarClick?: (data: ChartBarData) => void;
 }
 
 // Service chart colors matching Pro app CSS variables
@@ -65,6 +79,31 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
       } as PlanAppointment);
     }
 
+    // Build lookup maps from allBookings
+    const bookedVarIds = new Set<string>();
+    const bookedNames = new Set<string>();
+    const bookingByVarId = new Map<string, BookingRecord>();
+    const bookingByName = new Map<string, BookingRecord>();
+    for (const b of allBookings) {
+      if (!b.status.startsWith('CANCELLED')) {
+        if (b.service_variation_id) {
+          bookedVarIds.add(b.service_variation_id);
+          bookingByVarId.set(b.service_variation_id, b);
+        }
+        if (b.service_name) {
+          const key = b.service_name.toLowerCase();
+          bookedNames.add(key);
+          bookingByName.set(key, b);
+        }
+      }
+    }
+
+    // Find past plan appointments for "planned vs completed" comparison
+    const pastPlanAppts = planAppointments.filter((a) => {
+      const d = a.date instanceof Date ? a.date : new Date(a.date);
+      return d.getTime() < today.getTime();
+    });
+
     // Collect all service names for color mapping
     const nameSet = new Set<string>();
     for (const [, bks] of pastEntries) {
@@ -78,26 +117,28 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
     const names = Array.from(nameSet);
     const colorMap = new Map(names.map((n, i) => [n, SVC_COLORS[i % SVC_COLORS.length]]));
 
-    // Build set of booked variation IDs and names for marking
-    const bookedVarIds = new Set<string>();
-    const bookedNames = new Set<string>();
-    for (const b of allBookings) {
-      if (!b.status.startsWith('CANCELLED')) {
-        if (b.service_variation_id) bookedVarIds.add(b.service_variation_id);
-        if (b.service_name) bookedNames.add(b.service_name.toLowerCase());
-      }
-    }
-
     // Build data rows
     const data: any[] = [];
 
-    // Past visits
-    for (const [, bks] of pastEntries) {
+    // Past visits — completed appointments
+    for (const [dateKey, bks] of pastEntries) {
+      const matchingPlanAppt = pastPlanAppts.find((a) => {
+        const ad = a.date instanceof Date ? a.date : new Date(a.date);
+        return ad.toISOString().slice(0, 10) === dateKey;
+      });
+
       const row: any = {
         name: shortDate(bks[0].start_at),
         isPast: true,
         isBooked: false,
+        isCompleted: true,
+        plannedDate: matchingPlanAppt
+          ? (matchingPlanAppt.date instanceof Date ? matchingPlanAppt.date : new Date(matchingPlanAppt.date)).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+          : undefined,
+        actualDate: shortDate(bks[0].start_at),
         _raw: bks,
+        _appt: matchingPlanAppt,
+        _bookings: bks,
       };
       for (const b of bks) {
         const sname = b.service_name ?? 'Service';
@@ -108,12 +149,21 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
 
     // Upcoming visits
     for (const appt of futureAppts) {
-      // Check if this appointment is booked
+      const matchingBookings: BookingRecord[] = [];
       const isBooked = (appt.services ?? []).some((svc) => {
         const vid = svc.variation_id || svc.id;
-        if (vid && bookedVarIds.has(vid)) return true;
+        if (vid && bookedVarIds.has(vid)) {
+          const b = bookingByVarId.get(vid);
+          if (b && !matchingBookings.includes(b)) matchingBookings.push(b);
+          return true;
+        }
         const sname = svc.variation_name ? `${svc.name} — ${svc.variation_name}` : svc.name;
-        return sname && bookedNames.has(sname.toLowerCase());
+        if (sname && bookedNames.has(sname.toLowerCase())) {
+          const b = bookingByName.get(sname.toLowerCase());
+          if (b && !matchingBookings.includes(b)) matchingBookings.push(b);
+          return true;
+        }
+        return false;
       });
 
       const row: any = {
@@ -122,8 +172,16 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
           : shortDate(String(appt.date)),
         isPast: false,
         isBooked,
+        isCompleted: false,
+        plannedDate: appt.date instanceof Date
+          ? appt.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+          : new Date(appt.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        actualDate: isBooked && matchingBookings[0]
+          ? shortDate(matchingBookings[0].start_at)
+          : undefined,
         _raw: appt,
         _appt: appt.services?.length > 0 ? appt : undefined,
+        _bookings: matchingBookings,
       };
       for (const svc of appt.services ?? []) {
         const sname = svc.variation_name ? `${svc.name} — ${svc.variation_name}` : svc.name;
@@ -215,13 +273,28 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
             data={chartData}
             margin={{ top: 10, right: 10, left: -20, bottom: 40 }}
             onClick={(data: any) => {
-              if (data?.activePayload?.[0]?.payload?._appt && onBarClick) {
-                const appt = data.activePayload[0].payload._appt as PlanAppointment;
-                // Only fire for real upcoming appointments (not placeholders)
-                if (appt.services?.length > 0 && !data.activePayload[0].payload.isPast) {
-                  onBarClick(appt);
-                }
-              }
+              if (!onBarClick || !data?.activePayload?.[0]?.payload) return;
+              const row = data.activePayload[0].payload;
+              // Build ChartBarData from the row
+              const appt = row._appt as PlanAppointment | undefined;
+              const bookings = (row._bookings || []) as BookingRecord[];
+              // For past bars without a matching plan appointment, create a synthetic one from bookings
+              const effectiveAppt: PlanAppointment = appt ?? {
+                id: `past-${row.name}`,
+                date: new Date(row.name),
+                services: [],
+                notes: '',
+              };
+              if (effectiveAppt.services.length === 0 && !row.isPast) return; // skip empty placeholders
+              onBarClick({
+                appointment: effectiveAppt,
+                isPast: !!row.isPast,
+                isBooked: !!row.isBooked,
+                isCompleted: !!row.isCompleted,
+                plannedDate: row.plannedDate,
+                actualDate: row.actualDate,
+                matchingBookings: bookings,
+              });
             }}
             className="cursor-pointer"
           >
@@ -230,7 +303,15 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
               dataKey="name"
               tick={({ x, y, payload, index }: any) => {
                 const item = chartData[index];
-                const showCheck = item?.isPast || item?.isBooked;
+                let label = payload.value;
+                let fill = 'var(--foreground)';
+                if (item?.isCompleted) {
+                  label = `✓ ${payload.value}`;
+                  fill = 'var(--muted-foreground)';
+                } else if (item?.isBooked) {
+                  label = `✓ ${payload.value}`;
+                  fill = 'var(--primary)';
+                }
                 return (
                   <text
                     x={x}
@@ -238,10 +319,10 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
                     textAnchor="end"
                     fontSize={9}
                     fontWeight={600}
-                    fill={item?.isPast ? 'var(--muted-foreground)' : item?.isBooked ? 'var(--primary)' : 'var(--foreground)'}
+                    fill={fill}
                     transform={`rotate(-45, ${x}, ${y + 10})`}
                   >
-                    {showCheck ? `✓ ${payload.value}` : payload.value}
+                    {label}
                   </text>
                 );
               }}
@@ -260,16 +341,26 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
               content={({ active, payload }: any) => {
                 if (!active || !payload?.length) return null;
                 const row = payload[0]?.payload;
+                const statusLabel = row?.isCompleted ? 'Completed' : row?.isBooked ? 'Booked' : null;
+                const dateVerb = row?.isCompleted ? 'Completed' : row?.isBooked ? 'Scheduled' : null;
                 return (
-                  <div className="bg-primary text-primary-foreground p-4 bp-container-list shadow-xl min-w-[180px]">
+                  <div className="bg-primary text-primary-foreground p-4 bp-container-list shadow-xl min-w-[200px]">
                     <div className="flex items-center justify-between mb-2">
                       <p className="bp-caption text-primary-foreground">{row?.name}</p>
-                      {row?.isBooked && (
+                      {statusLabel && (
                         <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full bg-primary-foreground/20 text-primary-foreground">
-                          Booked
+                          {statusLabel}
                         </span>
                       )}
                     </div>
+                    {row?.plannedDate && dateVerb && (
+                      <div className="mb-2 pb-2 border-b border-primary-foreground/20">
+                        <p className="text-[10px] text-primary-foreground/70">Planned: {row.plannedDate}</p>
+                        {row.actualDate && row.actualDate !== row.plannedDate && (
+                          <p className="text-[10px] text-primary-foreground/70">{dateVerb}: {row.actualDate}</p>
+                        )}
+                      </div>
+                    )}
                     {payload.map((p: any, i: number) => (
                       <div key={i} className="flex items-center justify-between gap-4 mb-1">
                         <div className="flex items-center gap-2">

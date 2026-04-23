@@ -68,8 +68,13 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
 
     const pastEntries = Array.from(groups.entries()).slice(-3);
 
-    // Upcoming: plan appointments, pad to 10
-    const futureAppts = planAppointments.slice(0, 10);
+    // Upcoming: future plan appointments only, then pad to 10
+    const futureAppts = planAppointments
+      .filter((a) => {
+        const d = a.date instanceof Date ? a.date : new Date(a.date);
+        return d.getTime() >= today.getTime();
+      })
+      .slice(0, 10);
     while (futureAppts.length < 10) {
       futureAppts.push({
         id: `placeholder-${futureAppts.length}`,
@@ -79,11 +84,12 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
       } as PlanAppointment);
     }
 
-    // Build lookup maps from allBookings
+    // Build lookup maps from all bookings
     const bookedVarIds = new Set<string>();
     const bookedNames = new Set<string>();
     const bookingByVarId = new Map<string, BookingRecord>();
     const bookingByName = new Map<string, BookingRecord>();
+    const nonCancelledBookings = allBookings.filter((b) => !b.status.startsWith('CANCELLED'));
     for (const b of allBookings) {
       if (!b.status.startsWith('CANCELLED')) {
         if (b.service_variation_id) {
@@ -103,6 +109,8 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
       const d = a.date instanceof Date ? a.date : new Date(a.date);
       return d.getTime() < today.getTime();
     });
+
+    const sameDay = (d1: Date, d2: Date) => d1.toISOString().slice(0, 10) === d2.toISOString().slice(0, 10);
 
     // Collect all service names for color mapping
     const nameSet = new Set<string>();
@@ -127,6 +135,22 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
         return ad.toISOString().slice(0, 10) === dateKey;
       });
 
+      const fallbackPastAppt: PlanAppointment = {
+        id: matchingPlanAppt?.id || `past-${dateKey}`,
+        date: matchingPlanAppt?.date || new Date(bks[0].start_at),
+        services: (matchingPlanAppt?.services?.length
+          ? matchingPlanAppt.services
+          : bks.map((b, i) => ({
+              id: `${b.id}-${i}`,
+              name: b.service_name || 'Service',
+              category: 'Completed Service',
+              cost: b.service_cost || 0,
+              duration: b.service_duration || 0,
+              variation_id: b.service_variation_id,
+            }))) as any,
+        notes: matchingPlanAppt?.notes || '',
+      };
+
       const row: any = {
         name: shortDate(bks[0].start_at),
         isPast: true,
@@ -137,7 +161,7 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
           : undefined,
         actualDate: shortDate(bks[0].start_at),
         _raw: bks,
-        _appt: matchingPlanAppt,
+        _appt: fallbackPastAppt,
         _bookings: bks,
       };
       for (const b of bks) {
@@ -150,17 +174,31 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
     // Upcoming visits
     for (const appt of futureAppts) {
       const matchingBookings: BookingRecord[] = [];
+      const apptDate = appt.date instanceof Date ? appt.date : new Date(appt.date);
       const isBooked = (appt.services ?? []).some((svc) => {
         const vid = svc.variation_id || svc.id;
         if (vid && bookedVarIds.has(vid)) {
-          const b = bookingByVarId.get(vid);
-          if (b && !matchingBookings.includes(b)) matchingBookings.push(b);
-          return true;
+          const exact = bookingByVarId.get(vid);
+          if (exact && !matchingBookings.includes(exact)) {
+            matchingBookings.push(exact);
+            return true;
+          }
         }
         const sname = svc.variation_name ? `${svc.name} — ${svc.variation_name}` : svc.name;
         if (sname && bookedNames.has(sname.toLowerCase())) {
-          const b = bookingByName.get(sname.toLowerCase());
-          if (b && !matchingBookings.includes(b)) matchingBookings.push(b);
+          const byName = bookingByName.get(sname.toLowerCase());
+          if (byName && !matchingBookings.includes(byName)) {
+            matchingBookings.push(byName);
+            return true;
+          }
+        }
+        const nearByDate = nonCancelledBookings.find((b) => {
+          const bd = new Date(b.start_at);
+          const withinWindow = Math.abs(bd.getTime() - apptDate.getTime()) <= 1000 * 60 * 60 * 24 * 14;
+          return withinWindow && sameDay(bd, apptDate);
+        });
+        if (nearByDate && !matchingBookings.includes(nearByDate)) {
+          matchingBookings.push(nearByDate);
           return true;
         }
         return false;
@@ -356,7 +394,7 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
                     {row?.plannedDate && dateVerb && (
                       <div className="mb-2 pb-2 border-b border-primary-foreground/20">
                         <p className="text-[10px] text-primary-foreground/70">Planned: {row.plannedDate}</p>
-                        {row.actualDate && row.actualDate !== row.plannedDate && (
+                        {row.actualDate && (
                           <p className="text-[10px] text-primary-foreground/70">{dateVerb}: {row.actualDate}</p>
                         )}
                       </div>

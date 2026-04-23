@@ -6,7 +6,6 @@ import { ClientDataProvider, useClientData } from './contexts/ClientDataContext'
 import { LoginScreen } from './components/LoginScreen';
 import { ActivationScreen } from './components/ActivationScreen';
 import { ClaimCodeEntry } from './components/ClaimCodeEntry';
-import { ClientDashboard } from './components/ClientDashboard';
 import { AppointmentsTab } from './components/AppointmentsTab';
 import { PlanView } from './components/PlanView';
 import { ProfileSettings } from './components/ProfileSettings';
@@ -78,7 +77,7 @@ const AuthenticatedShell: React.FC = () => {
   const renderContent = () => {
     switch (activeTab) {
       case 'home':
-        return <ClientDashboard onNavigate={(t) => setActiveTab(t)} />;
+        return <PlanView />;
       case 'plan':
         return <PlanView />;
       case 'appointments':
@@ -86,7 +85,7 @@ const AuthenticatedShell: React.FC = () => {
       case 'profile':
         return <ProfileSettings />;
       default:
-        return <ClientDashboard onNavigate={(t) => setActiveTab(t)} />;
+        return <PlanView />;
     }
   };
 

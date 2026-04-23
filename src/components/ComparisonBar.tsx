@@ -7,6 +7,8 @@ type TabKey = 'duration' | 'cost';
 interface ComparisonChartProps {
   planAppointments: PlanAppointment[];
   pastBookings: BookingRecord[];
+  /** Called when user clicks a bar for an upcoming (non-placeholder) appointment */
+  onBarClick?: (appt: PlanAppointment) => void;
 }
 
 // Service chart colors matching Pro app CSS variables
@@ -26,6 +28,7 @@ const SVC_COLORS = [
 export const ComparisonChart: React.FC<ComparisonChartProps> = ({
   planAppointments,
   pastBookings,
+  onBarClick,
 }) => {
   const [tab, setTab] = useState<TabKey>('duration');
 
@@ -97,6 +100,7 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
           : shortDate(String(appt.date)),
         isPast: false,
         _raw: appt,
+        _appt: appt.services?.length > 0 ? appt : undefined,
       };
       for (const svc of appt.services ?? []) {
         const sname = svc.variation_name ? `${svc.name} — ${svc.variation_name}` : svc.name;
@@ -187,6 +191,16 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
           <BarChart
             data={chartData}
             margin={{ top: 10, right: 10, left: -20, bottom: 40 }}
+            onClick={(data: any) => {
+              if (data?.activePayload?.[0]?.payload?._appt && onBarClick) {
+                const appt = data.activePayload[0].payload._appt as PlanAppointment;
+                // Only fire for real upcoming appointments (not placeholders)
+                if (appt.services?.length > 0 && !data.activePayload[0].payload.isPast) {
+                  onBarClick(appt);
+                }
+              }
+            }}
+            className="cursor-pointer"
           >
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
             <XAxis

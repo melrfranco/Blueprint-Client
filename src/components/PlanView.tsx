@@ -28,6 +28,7 @@ export const PlanView: React.FC = () => {
   const [planIdForBooking, setPlanIdForBooking] = useState<string | undefined>(undefined);
   const [acceptingMembership, setAcceptingMembership] = useState(false);
   const [acceptError, setAcceptError] = useState<string | null>(null);
+  const [membershipDismissed, setMembershipDismissed] = useState(false);
 
   const activePlan = useMemo(
     () => plans.find((p) => p.status === 'active') || plans[0],
@@ -49,6 +50,14 @@ export const PlanView: React.FC = () => {
   const pastBookings = useMemo(() => {
     const now = Date.now();
     return bookings.filter((b) => new Date(b.start_at).getTime() < now && !b.status.startsWith('CANCELLED'));
+  }, [bookings]);
+
+  // Future bookings (for showing booked appointments in the list)
+  const futureBookings = useMemo(() => {
+    const now = Date.now();
+    return bookings
+      .filter((b) => !b.status.startsWith('CANCELLED') && new Date(b.start_at).getTime() >= now)
+      .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime());
   }, [bookings]);
 
   const handleAcceptMembership = async () => {
@@ -129,13 +138,13 @@ export const PlanView: React.FC = () => {
               {activePlan.totalCost > 0 && (
                 <div className="flex items-center gap-4 mt-1">
                   <div>
-                    <p className="bp-overline">Per Visit</p>
+                    <p className="bp-overline">Avg Per Visit</p>
                     <p className="bp-stat-value text-lg">
                       ${(activePlan.totalCost / Math.max(activePlan.appointments.length, 1)).toFixed(0)}
                     </p>
                   </div>
                   <div>
-                    <p className="bp-overline">Monthly</p>
+                    <p className="bp-overline">Avg Monthly</p>
                     <p className="bp-stat-value text-lg">
                       ${(activePlan.totalCost / 12).toFixed(0)}
                     </p>
@@ -153,7 +162,7 @@ export const PlanView: React.FC = () => {
             <span className="bp-body-sm font-semibold text-primary">Active Member</span>
           </div>
         )}
-        {membershipIsOffered && (
+        {membershipIsOffered && !membershipDismissed && (
           <div className="flex items-center gap-3 px-4 py-2.5 bg-secondary/10 rounded-full">
             <StarIcon className="w-5 h-5 text-secondary flex-shrink-0" />
             <span className="bp-body-sm font-semibold text-secondary flex-1">Membership offer pending</span>
@@ -169,7 +178,7 @@ export const PlanView: React.FC = () => {
                 {acceptingMembership ? '...' : 'Accept'}
               </button>
               <button
-                onClick={() => {/* TODO: decline/postpone */}}
+                onClick={() => setMembershipDismissed(true)}
                 className="bp-caption text-secondary hover:text-foreground transition-colors underline"
               >
                 Later
@@ -180,11 +189,29 @@ export const PlanView: React.FC = () => {
 
         {/* Comparison chart: plan appointments vs past visits */}
         {activePlan.appointments.length > 0 && (
-          <div className="bp-card bp-card-padding-md">
+          <div className="bp-card-padding-md">
             <h3 className="bp-section-title mb-3">Your Plan at a Glance</h3>
             <ComparisonChart
               planAppointments={activePlan.appointments}
               pastBookings={pastBookings}
+              onBarClick={(appt) => {
+                const primaryService = appt.services?.[0];
+                if (!primaryService) return;
+                const planVariationId = primaryService.variation_id || primaryService.id;
+                const bookable: Service = {
+                  id: primaryService.id,
+                  name: primaryService.name,
+                  variation_name: primaryService.variation_name,
+                  category: primaryService.category || 'Square Import',
+                  cost: primaryService.cost,
+                  duration: primaryService.duration,
+                  variation_id: planVariationId,
+                  item_id: primaryService.item_id,
+                };
+                setBookingService(bookable);
+                setBookingAppointment(appt);
+                setPlanIdForBooking(activePlan.id);
+              }}
             />
           </div>
         )}
@@ -286,6 +313,35 @@ export const PlanView: React.FC = () => {
             </div>
           )}
         </section>
+
+        {/* Booked upcoming appointments */}
+        {futureBookings.length > 0 && (
+          <section>
+            <h3 className="bp-section-title mb-3">Upcoming Booked</h3>
+            <div className="space-y-3">
+              {futureBookings.map((b) => (
+                <div key={b.id} className="bp-card bp-card-padding-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-primary/10 rounded-full flex-shrink-0">
+                      <CalendarIcon className="w-5 h-5 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="bp-body-sm font-semibold">{b.service_name ?? 'Service'}</p>
+                      <p className="bp-caption text-muted-foreground mt-0.5">
+                        {formatDateLong(new Date(b.start_at))}
+                      </p>
+                      <div className="mt-2">
+                        <span className="bp-caption uppercase tracking-widest px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                          {b.status === 'PENDING' ? 'Pending' : 'Confirmed'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );

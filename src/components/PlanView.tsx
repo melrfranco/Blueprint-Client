@@ -35,16 +35,27 @@ export const PlanView: React.FC = () => {
     [plans],
   );
 
-  // Map completed/upcoming bookings by service_variation_id for lookup
+  // Map bookings by both variation_id AND service name for robust matching
   const bookedVariationIds = useMemo(() => {
     const s = new Set<string>();
     for (const b of bookings) {
-      if (b.plan_id === activePlan?.id && !b.status.startsWith('CANCELLED')) {
-        s.add(b.service_variation_id);
+      if (!b.status.startsWith('CANCELLED')) {
+        if (b.service_variation_id) s.add(b.service_variation_id);
       }
     }
     return s;
-  }, [bookings, activePlan?.id]);
+  }, [bookings]);
+
+  // Also track booked service names for fuzzy matching
+  const bookedServiceNames = useMemo(() => {
+    const s = new Set<string>();
+    for (const b of bookings) {
+      if (!b.status.startsWith('CANCELLED') && b.service_name) {
+        s.add(b.service_name.toLowerCase());
+      }
+    }
+    return s;
+  }, [bookings]);
 
   // Past bookings for comparison chart
   const pastBookings = useMemo(() => {
@@ -194,6 +205,7 @@ export const PlanView: React.FC = () => {
             <ComparisonChart
               planAppointments={activePlan.appointments}
               pastBookings={pastBookings}
+              allBookings={bookings}
               onBarClick={(appt) => {
                 const primaryService = appt.services?.[0];
                 if (!primaryService) return;
@@ -248,7 +260,14 @@ export const PlanView: React.FC = () => {
                   item_id: primaryService.item_id,
                 } : null;
                 const variationId = planVariationId;
-                const alreadyBooked = variationId ? bookedVariationIds.has(variationId) : false;
+                const svcName = primaryService?.variation_name
+                  ? `${primaryService.name} — ${primaryService.variation_name}`
+                  : primaryService?.name;
+                const alreadyBooked = variationId
+                  ? bookedVariationIds.has(variationId)
+                  : svcName
+                    ? bookedServiceNames.has(svcName.toLowerCase())
+                    : false;
 
                 return (
                   <div key={appt.id || idx} className="bp-card bp-card-padding-sm">

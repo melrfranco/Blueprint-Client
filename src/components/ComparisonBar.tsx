@@ -7,6 +7,8 @@ type TabKey = 'duration' | 'cost';
 interface ComparisonChartProps {
   planAppointments: PlanAppointment[];
   pastBookings: BookingRecord[];
+  /** All bookings (used to mark which upcoming bars are already booked) */
+  allBookings?: BookingRecord[];
   /** Called when user clicks a bar for an upcoming (non-placeholder) appointment */
   onBarClick?: (appt: PlanAppointment) => void;
 }
@@ -28,6 +30,7 @@ const SVC_COLORS = [
 export const ComparisonChart: React.FC<ComparisonChartProps> = ({
   planAppointments,
   pastBookings,
+  allBookings = [],
   onBarClick,
 }) => {
   const [tab, setTab] = useState<TabKey>('duration');
@@ -75,6 +78,16 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
     const names = Array.from(nameSet);
     const colorMap = new Map(names.map((n, i) => [n, SVC_COLORS[i % SVC_COLORS.length]]));
 
+    // Build set of booked variation IDs and names for marking
+    const bookedVarIds = new Set<string>();
+    const bookedNames = new Set<string>();
+    for (const b of allBookings) {
+      if (!b.status.startsWith('CANCELLED')) {
+        if (b.service_variation_id) bookedVarIds.add(b.service_variation_id);
+        if (b.service_name) bookedNames.add(b.service_name.toLowerCase());
+      }
+    }
+
     // Build data rows
     const data: any[] = [];
 
@@ -83,6 +96,7 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
       const row: any = {
         name: shortDate(bks[0].start_at),
         isPast: true,
+        isBooked: false,
         _raw: bks,
       };
       for (const b of bks) {
@@ -94,11 +108,20 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
 
     // Upcoming visits
     for (const appt of futureAppts) {
+      // Check if this appointment is booked
+      const isBooked = (appt.services ?? []).some((svc) => {
+        const vid = svc.variation_id || svc.id;
+        if (vid && bookedVarIds.has(vid)) return true;
+        const sname = svc.variation_name ? `${svc.name} — ${svc.variation_name}` : svc.name;
+        return sname && bookedNames.has(sname.toLowerCase());
+      });
+
       const row: any = {
         name: appt.date instanceof Date
           ? shortDate(appt.date.toISOString())
           : shortDate(String(appt.date)),
         isPast: false,
+        isBooked,
         _raw: appt,
         _appt: appt.services?.length > 0 ? appt : undefined,
       };
@@ -110,7 +133,7 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
     }
 
     return { chartData: data, serviceNames: names, serviceColorMap: colorMap };
-  }, [planAppointments, pastBookings, tab]);
+  }, [planAppointments, pastBookings, allBookings, tab]);
 
   // Summary
   const summary = useMemo(() => {
@@ -207,6 +230,7 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
               dataKey="name"
               tick={({ x, y, payload, index }: any) => {
                 const item = chartData[index];
+                const showCheck = item?.isPast || item?.isBooked;
                 return (
                   <text
                     x={x}
@@ -214,10 +238,10 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
                     textAnchor="end"
                     fontSize={9}
                     fontWeight={600}
-                    fill={item?.isPast ? 'var(--muted-foreground)' : 'var(--foreground)'}
+                    fill={item?.isPast ? 'var(--muted-foreground)' : item?.isBooked ? 'var(--primary)' : 'var(--foreground)'}
                     transform={`rotate(-45, ${x}, ${y + 10})`}
                   >
-                    {item?.isPast ? `✓ ${payload.value}` : payload.value}
+                    {showCheck ? `✓ ${payload.value}` : payload.value}
                   </text>
                 );
               }}
@@ -238,7 +262,14 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
                 const row = payload[0]?.payload;
                 return (
                   <div className="bg-primary text-primary-foreground p-4 bp-container-list shadow-xl min-w-[180px]">
-                    <p className="bp-caption text-primary-foreground mb-2">{row?.name}</p>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="bp-caption text-primary-foreground">{row?.name}</p>
+                      {row?.isBooked && (
+                        <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full bg-primary-foreground/20 text-primary-foreground">
+                          Booked
+                        </span>
+                      )}
+                    </div>
                     {payload.map((p: any, i: number) => (
                       <div key={i} className="flex items-center justify-between gap-4 mb-1">
                         <div className="flex items-center gap-2">

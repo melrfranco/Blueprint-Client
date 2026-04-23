@@ -1,38 +1,26 @@
 import React, { useState, useMemo } from 'react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { BookingRecord, PlanAppointment } from '../types';
 
 type TabKey = 'duration' | 'cost';
 
-// A single segment within a stacked bar
-interface Segment {
-  name: string;
-  value: number; // duration (min) or cost (cents) depending on tab
-}
-
-// A single visit (one stacked bar)
-interface Visit {
-  label: string;
-  segments: Segment[];
-  isUpcoming: boolean;
-}
-
 interface ComparisonChartProps {
-  /** Planned appointments from the Blueprint (up to 10) */
   planAppointments: PlanAppointment[];
-  /** Past actual bookings for comparison (last 3 visits) */
   pastBookings: BookingRecord[];
 }
 
-// Blueprint on-brand palette for stacked segments
-const SEGMENT_COLORS = [
-  '#0B3559', // deep navy
-  '#5B9EC9', // sky blue
-  '#2B7A9E', // teal
-  '#8FB8D4', // light blue
-  '#1A5276', // dark teal
-  '#A9CCE3', // pale blue
-  '#3A7CA5', // medium blue
-  '#6BA3C0', // soft steel
+// Service chart colors matching Pro app CSS variables
+const SVC_COLORS = [
+  'var(--svc-color-1)',
+  'var(--svc-color-2)',
+  'var(--svc-color-3)',
+  'var(--svc-color-4)',
+  'var(--svc-color-5)',
+  'var(--svc-color-6)',
+  'var(--svc-color-7)',
+  'var(--svc-color-8)',
+  'var(--svc-color-9)',
+  'var(--svc-color-10)',
 ];
 
 export const ComparisonChart: React.FC<ComparisonChartProps> = ({
@@ -41,148 +29,107 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
 }) => {
   const [tab, setTab] = useState<TabKey>('duration');
 
-  // --- Build visits ---
+  // Build recharts data: each object is a visit with service names as keys
+  const { chartData, serviceNames, serviceColorMap } = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-  // Past visits: group bookings by date, take last 3
-  const pastVisits: Visit[] = useMemo(() => {
+    // Past: group bookings by date, take last 3
     const filtered = pastBookings
       .filter((b) => !b.status.startsWith('CANCELLED'))
       .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime());
 
     const groups = new Map<string, BookingRecord[]>();
     for (const b of filtered) {
-      const key = dateKey(b.start_at);
+      const key = new Date(b.start_at).toISOString().slice(0, 10);
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(b);
     }
 
-    return Array.from(groups.entries())
-      .slice(-3)
-      .map(([, bks]) => ({
-        label: shortDate(bks[0].start_at),
-        segments: bks.map((b) => ({
-          name: b.service_name ?? 'Service',
-          value: 0, // filled per-tab below
-        })),
-        isUpcoming: false,
-      }));
-  }, [pastBookings]);
+    const pastEntries = Array.from(groups.entries()).slice(-3);
 
-  // Upcoming visits: from plan appointments, always pad to 10
-  const upcomingVisits: Visit[] = useMemo(() => {
-    const visits = planAppointments.slice(0, 10).map((appt) => ({
-      label: appt.date instanceof Date
-        ? shortDate(appt.date.toISOString())
-        : shortDate(String(appt.date)),
-      segments: (appt.services ?? []).map((svc) => ({
-        name: svc.variation_name ? `${svc.name} — ${svc.variation_name}` : svc.name,
-        value: 0,
-      })),
-      isUpcoming: true,
-    }));
-    // Pad to 10 with placeholder visits
-    while (visits.length < 10) {
-      visits.push({ label: `Visit ${visits.length + 1}`, segments: [], isUpcoming: true });
+    // Upcoming: plan appointments, pad to 10
+    const futureAppts = planAppointments.slice(0, 10);
+    while (futureAppts.length < 10) {
+      futureAppts.push({
+        id: `placeholder-${futureAppts.length}`,
+        date: new Date(today.getTime() + (futureAppts.length + 1) * 30 * 86400000),
+        services: [],
+        notes: '',
+      } as PlanAppointment);
     }
-    return visits;
-  }, [planAppointments]);
 
-  // --- Fill segment values based on active tab ---
-  const visitsFilled: (Visit & { total: number })[] = useMemo(() => {
-    if (tab === 'duration') {
-      // Past: use service_duration from bookings
-      const pastFilled = pastVisits.map((v, vi) => {
-        const filtered = pastBookings
-          .filter((b) => !b.status.startsWith('CANCELLED'))
-          .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime());
-        const groups = new Map<string, BookingRecord[]>();
-        for (const b of filtered) {
-          const key = dateKey(b.start_at);
-          if (!groups.has(key)) groups.set(key, []);
-          groups.get(key)!.push(b);
-        }
-        const entries = Array.from(groups.entries()).slice(-3);
-        const bks = entries[vi]?.[1] ?? [];
-        const segments = bks.map((b) => ({
-          name: b.service_name ?? 'Service',
-          value: b.service_duration ?? 0,
-        }));
-        return { ...v, segments, total: segments.reduce((s, seg) => s + seg.value, 0) };
-      });
-
-      // Upcoming: use duration from plan services
-      const upcomingFilled = upcomingVisits.map((v, vi) => {
-        const appt = planAppointments[vi];
-        const segments = (appt.services ?? []).map((svc) => ({
-          name: svc.variation_name ? `${svc.name} — ${svc.variation_name}` : svc.name,
-          value: svc.duration ?? 0,
-        }));
-        return { ...v, segments, total: segments.reduce((s, seg) => s + seg.value, 0) };
-      });
-
-      return [...pastFilled, ...upcomingFilled];
-    } else {
-      // Cost tab
-      const pastFilled = pastVisits.map((v, vi) => {
-        const filtered = pastBookings
-          .filter((b) => !b.status.startsWith('CANCELLED'))
-          .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime());
-        const groups = new Map<string, BookingRecord[]>();
-        for (const b of filtered) {
-          const key = dateKey(b.start_at);
-          if (!groups.has(key)) groups.set(key, []);
-          groups.get(key)!.push(b);
-        }
-        const entries = Array.from(groups.entries()).slice(-3);
-        const bks = entries[vi]?.[1] ?? [];
-        const segments = bks.map((b) => ({
-          name: b.service_name ?? 'Service',
-          value: b.service_cost ?? 0,
-        }));
-        return { ...v, segments, total: segments.reduce((s, seg) => s + seg.value, 0) };
-      });
-
-      const upcomingFilled = upcomingVisits.map((v, vi) => {
-        const appt = planAppointments[vi];
-        const segments = (appt.services ?? []).map((svc) => ({
-          name: svc.variation_name ? `${svc.name} — ${svc.variation_name}` : svc.name,
-          value: svc.cost ?? 0,
-        }));
-        return { ...v, segments, total: segments.reduce((s, seg) => s + seg.value, 0) };
-      });
-
-      return [...pastFilled, ...upcomingFilled];
+    // Collect all service names for color mapping
+    const nameSet = new Set<string>();
+    for (const [, bks] of pastEntries) {
+      for (const b of bks) nameSet.add(b.service_name ?? 'Service');
     }
-  }, [pastVisits, upcomingVisits, pastBookings, planAppointments, tab]);
-
-  // --- Color map: consistent per service name ---
-  const allServiceNames = useMemo(() => {
-    const names = new Set<string>();
-    for (const v of visitsFilled) {
-      for (const seg of v.segments) {
-        names.add(seg.name);
+    for (const appt of planAppointments) {
+      for (const svc of appt.services ?? []) {
+        nameSet.add(svc.variation_name ? `${svc.name} — ${svc.variation_name}` : svc.name);
       }
     }
-    return Array.from(names);
-  }, [visitsFilled]);
+    const names = Array.from(nameSet);
+    const colorMap = new Map(names.map((n, i) => [n, SVC_COLORS[i % SVC_COLORS.length]]));
 
-  const serviceColorMap = useMemo(() =>
-    new Map(allServiceNames.map((name, i) => [name, SEGMENT_COLORS[i % SEGMENT_COLORS.length]])),
-    [allServiceNames]
-  );
+    // Build data rows
+    const data: any[] = [];
 
-  // Max total for Y scale
-  const maxTotal = Math.max(...visitsFilled.map((v) => v.total), 1);
+    // Past visits
+    for (const [, bks] of pastEntries) {
+      const row: any = {
+        name: shortDate(bks[0].start_at),
+        isPast: true,
+        _raw: bks,
+      };
+      for (const b of bks) {
+        const sname = b.service_name ?? 'Service';
+        row[sname] = (row[sname] || 0) + (tab === 'duration' ? (b.service_duration ?? 0) : (b.service_cost ?? 0));
+      }
+      data.push(row);
+    }
 
-  // Summary: compare average upcoming vs average past
+    // Upcoming visits
+    for (const appt of futureAppts) {
+      const row: any = {
+        name: appt.date instanceof Date
+          ? shortDate(appt.date.toISOString())
+          : shortDate(String(appt.date)),
+        isPast: false,
+        _raw: appt,
+      };
+      for (const svc of appt.services ?? []) {
+        const sname = svc.variation_name ? `${svc.name} — ${svc.variation_name}` : svc.name;
+        row[sname] = (row[sname] || 0) + (tab === 'duration' ? (svc.duration ?? 0) : (svc.cost ?? 0));
+      }
+      data.push(row);
+    }
+
+    return { chartData: data, serviceNames: names, serviceColorMap: colorMap };
+  }, [planAppointments, pastBookings, tab]);
+
+  // Summary
   const summary = useMemo(() => {
-    const pastV = visitsFilled.filter((v) => !v.isUpcoming);
-    const upcomingV = visitsFilled.filter((v) => v.isUpcoming);
-    if (pastV.length === 0 || upcomingV.length === 0) return null;
-    const avgPast = pastV.reduce((s, v) => s + v.total, 0) / pastV.length;
-    const avgUpcoming = upcomingV.reduce((s, v) => s + v.total, 0) / upcomingV.length;
+    const pastRows = chartData.filter((d: any) => d.isPast);
+    const futureRows = chartData.filter((d: any) => !d.isPast);
+    if (pastRows.length === 0 || futureRows.length === 0) return null;
+
+    const sumPast = pastRows.reduce((s: number, r: any) => {
+      let t = 0;
+      for (const n of serviceNames) t += (r[n] || 0);
+      return s + t;
+    }, 0);
+    const sumFuture = futureRows.reduce((s: number, r: any) => {
+      let t = 0;
+      for (const n of serviceNames) t += (r[n] || 0);
+      return s + t;
+    }, 0);
+
+    const avgPast = sumPast / pastRows.length;
+    const avgFuture = sumFuture / futureRows.length;
     if (avgPast === 0) return null;
-    const ratio = avgUpcoming / avgPast;
+    const ratio = avgFuture / avgPast;
+
     if (tab === 'duration') {
       if (ratio < 0.4) return 'Your plan visits are much shorter than your past visits';
       if (ratio < 0.65) return 'Your plan visits are about half as long as your past visits';
@@ -200,12 +147,13 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
       if (ratio <= 2.0) return 'Your plan visits cost about twice as much as your past visits';
       return 'Your plan visits cost much more than your past visits';
     }
-  }, [visitsFilled, tab]);
+  }, [chartData, serviceNames, tab]);
 
-  if (visitsFilled.length === 0) return null;
+  if (chartData.length === 0) return null;
 
-  // Divider index: where past ends and upcoming begins
-  const dividerIndex = pastVisits.length;
+  const yFormatter = tab === 'duration'
+    ? (v: number) => formatDuration(v)
+    : (v: number) => formatCost(v);
 
   return (
     <div className="w-full select-none">
@@ -233,110 +181,96 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
         </button>
       </div>
 
-      {/* Chart area */}
-      <div className="flex items-end justify-center gap-2 h-48 px-2 overflow-x-auto">
-        {visitsFilled.map((visit, vi) => {
-          const totalHeightPct = maxTotal > 0 ? (visit.total / maxTotal) * 100 : 0;
-          const isDivider = vi === dividerIndex && dividerIndex > 0;
-          const isEmpty = visit.segments.length === 0;
-          return (
-            <React.Fragment key={vi}>
-              {/* Divider line between past and upcoming */}
-              {isDivider && (
-                <div className="flex-shrink-0 w-px self-stretch bg-border mx-1" />
-              )}
-              <div className="flex-shrink-0 flex flex-col items-center h-full justify-end" style={{ width: `${100 / Math.max(visitsFilled.length, 1)}%`, minWidth: '24px', maxWidth: '40px' }}>
-                {/* Total label above bar */}
-                {!isEmpty && (
-                  <span className={`text-[8px] font-bold mb-0.5 whitespace-nowrap ${visit.isUpcoming ? 'text-primary' : 'text-muted-foreground'}`}>
-                    {tab === 'duration' ? formatDuration(visit.total) : formatCost(visit.total)}
-                  </span>
-                )}
-
-                {/* Stacked bar or placeholder */}
-                {isEmpty ? (
-                  <div
-                    className="w-full rounded-t-lg border-2 border-dashed border-primary/20 transition-all duration-500"
-                    style={{ height: '8%' }}
-                  />
-                ) : (
-                  <div
-                    className="w-full relative rounded-t-lg overflow-hidden transition-all duration-500"
-                    style={{
-                      height: `${Math.max(totalHeightPct, 4)}%`,
-                      opacity: visit.isUpcoming ? 1 : 0.5,
-                      outline: visit.isUpcoming ? '2px solid var(--primary)' : '1px solid var(--border)',
-                      outlineOffset: '-1px',
-                    }}
+      {/* Chart */}
+      <div className="h-56 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart
+            data={chartData}
+            margin={{ top: 10, right: 10, left: -20, bottom: 40 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+            <XAxis
+              dataKey="name"
+              tick={({ x, y, payload, index }: any) => {
+                const item = chartData[index];
+                return (
+                  <text
+                    x={x}
+                    y={y + 10}
+                    textAnchor="end"
+                    fontSize={9}
+                    fontWeight={600}
+                    fill={item?.isPast ? 'var(--muted-foreground)' : 'var(--foreground)'}
+                    transform={`rotate(-45, ${x}, ${y + 10})`}
                   >
-                    {visit.segments.map((seg, si) => {
-                      const segPct = visit.total > 0 ? (seg.value / visit.total) * 100 : 0;
-                      const color = serviceColorMap.get(seg.name) ?? SEGMENT_COLORS[0];
-                      return (
-                        <div
-                          key={si}
-                          className="w-full transition-all duration-300"
-                          style={{
-                            height: `${segPct}%`,
-                            backgroundColor: color,
-                            borderTop: si > 0 ? '1px solid rgba(255,255,255,0.3)' : undefined,
-                          }}
-                        />
-                      );
-                    })}
+                    {item?.isPast ? `✓ ${payload.value}` : payload.value}
+                  </text>
+                );
+              }}
+              axisLine={{ stroke: 'var(--border)', strokeWidth: 2 }}
+              tickLine={false}
+              interval={0}
+            />
+            <YAxis
+              tickFormatter={yFormatter}
+              tick={{ fontSize: 10, fontWeight: 600, fill: 'var(--muted-foreground)' }}
+              axisLine={{ stroke: 'var(--border)', strokeWidth: 2 }}
+              tickLine={false}
+            />
+            <Tooltip
+              cursor={{ fill: 'var(--muted)' }}
+              content={({ active, payload }: any) => {
+                if (!active || !payload?.length) return null;
+                const row = payload[0]?.payload;
+                return (
+                  <div className="bg-primary text-primary-foreground p-4 bp-container-list shadow-xl min-w-[180px]">
+                    <p className="bp-caption text-primary-foreground mb-2">{row?.name}</p>
+                    {payload.map((p: any, i: number) => (
+                      <div key={i} className="flex items-center justify-between gap-4 mb-1">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: p.color }} />
+                          <span className="text-xs font-semibold">{p.name}</span>
+                        </div>
+                        <span className="text-xs font-bold">{yFormatter(p.value)}</span>
+                      </div>
+                    ))}
                   </div>
-                )}
-
-                {/* Visit label */}
-                <span
-                  className={`text-[7px] font-semibold uppercase tracking-wide mt-1 text-center leading-tight truncate w-full ${
-                    visit.isUpcoming && !isEmpty ? 'text-primary' : 'text-muted-foreground'
-                  }`}
-                >
-                  {visit.label}
-                </span>
-              </div>
-            </React.Fragment>
-          );
-        })}
+                );
+              }}
+            />
+            {serviceNames.map((name) => (
+              <Bar
+                key={name}
+                dataKey={name}
+                stackId="a"
+                fill={serviceColorMap.get(name) || '#cbd5e1'}
+                radius={[0, 0, 0, 0]}
+              />
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
       </div>
 
-      {/* Y-axis hint */}
-      <div className="flex justify-between mt-0.5 px-1">
-        <span className="text-[9px] text-muted-foreground">0</span>
-        <span className="text-[9px] text-muted-foreground">
-          {tab === 'duration' ? formatDuration(maxTotal) : formatCost(maxTotal)}
-        </span>
+      {/* Legend */}
+      <div className="mt-4 flex flex-wrap gap-3 justify-center">
+        {serviceNames.map((name) => (
+          <div key={name} className="flex items-center gap-2">
+            <div
+              className="w-3 h-3 rounded-full flex-shrink-0"
+              style={{ background: serviceColorMap.get(name) }}
+            />
+            <span className="bp-caption text-muted-foreground">{name}</span>
+          </div>
+        ))}
       </div>
 
       {/* Summary */}
       {summary && (
         <p className="bp-caption text-muted-foreground mt-3 text-center italic">{summary}</p>
       )}
-
-      {/* Legend */}
-      <div className="flex flex-wrap gap-x-3 gap-y-1 mt-3 justify-center">
-        {allServiceNames.map((name) => (
-          <div key={name} className="flex items-center gap-1.5">
-            <div
-              className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
-              style={{ backgroundColor: serviceColorMap.get(name) }}
-            />
-            <span className="bp-caption text-muted-foreground">{name}</span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 };
-
-function dateKey(iso: string): string {
-  try {
-    return new Date(iso).toISOString().slice(0, 10);
-  } catch {
-    return iso;
-  }
-}
 
 function shortDate(iso: string): string {
   try {

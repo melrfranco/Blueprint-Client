@@ -1,20 +1,21 @@
 import React from 'react';
-import { HomeIcon, CalendarIcon, ProfileIcon, GiftIcon } from './icons';
+import { HomeIcon, CalendarIcon, ProfileIcon, StarIcon } from './icons';
 
 interface BottomNavProps {
   activeTab: string;
   onChange: (tab: string) => void;
-  membershipOffered?: boolean;
+  /** Show notification bubble on membership tab */
+  membershipNotified?: boolean;
 }
 
 const NAV_ITEMS = [
   { id: 'home', label: 'Home', icon: HomeIcon },
-  { id: 'plan', label: 'Plan', icon: GiftIcon },
   { id: 'appointments', label: 'Visits', icon: CalendarIcon },
+  { id: 'membership', label: 'Member', icon: StarIcon },
   { id: 'profile', label: 'Profile', icon: ProfileIcon },
 ];
 
-export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onChange, membershipOffered }) => {
+export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onChange, membershipNotified }) => {
   return (
     <nav className="bp-bottomnav fixed bottom-0 left-0 right-0 z-50">
       <div className="max-w-4xl mx-auto px-4 py-2">
@@ -22,7 +23,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onChange, membe
           {NAV_ITEMS.map((item) => {
             const isActive = activeTab === item.id;
             const Icon = item.icon;
-            const showBadge = item.id === 'plan' && membershipOffered;
+            const showBadge = item.id === 'membership' && membershipNotified;
             
             return (
               <button

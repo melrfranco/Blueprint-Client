@@ -1,9 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { useClientData } from '../contexts/ClientDataContext';
 import { useAuth } from '../contexts/AuthContext';
-import { apiClient } from '../services/apiClient';
 import { BookingFlow } from './BookingFlow';
-import { CalendarIcon, StarIcon, GiftIcon, CheckCircleIcon } from './icons';
+import { CalendarIcon, GiftIcon } from './icons';
 import { ComparisonChart } from './ComparisonBar';
 import type { Service, PlanAppointment } from '../types';
 
@@ -26,9 +25,6 @@ export const PlanView: React.FC = () => {
   const [bookingService, setBookingService] = useState<Service | null>(null);
   const [bookingAppointment, setBookingAppointment] = useState<PlanAppointment | undefined>(undefined);
   const [planIdForBooking, setPlanIdForBooking] = useState<string | undefined>(undefined);
-  const [acceptingMembership, setAcceptingMembership] = useState(false);
-  const [acceptError, setAcceptError] = useState<string | null>(null);
-  const [membershipDismissed, setMembershipDismissed] = useState(false);
 
   const activePlan = useMemo(
     () => plans.find((p) => p.status === 'active') || plans[0],
@@ -71,20 +67,6 @@ export const PlanView: React.FC = () => {
       .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime());
   }, [bookings]);
 
-  const handleAcceptMembership = async () => {
-    if (!activePlan) return;
-    setAcceptingMembership(true);
-    setAcceptError(null);
-    try {
-      await apiClient.acceptMembership(activePlan.id);
-      await refresh();
-    } catch (err) {
-      setAcceptError(err instanceof Error ? err.message : 'Failed to accept membership');
-    } finally {
-      setAcceptingMembership(false);
-    }
-  };
-
   if (bookingService) {
     return (
       <BookingFlow
@@ -125,9 +107,6 @@ export const PlanView: React.FC = () => {
     );
   }
 
-  const membershipIsOffered = activePlan.membershipStatus === 'offered';
-  const membershipIsActive = activePlan.membershipStatus === 'active';
-
   return (
     <div className="bp-page">
       <h1 className="bp-page-title">Your Blueprint</h1>
@@ -166,39 +145,7 @@ export const PlanView: React.FC = () => {
           </div>
         </div>
 
-        {/* Membership status — compact banner */}
-        {membershipIsActive && (
-          <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/10 rounded-full">
-            <CheckCircleIcon className="w-5 h-5 text-primary flex-shrink-0" />
-            <span className="bp-body-sm font-semibold text-primary">Active Member</span>
-          </div>
-        )}
-        {membershipIsOffered && !membershipDismissed && (
-          <div className="flex items-center gap-3 px-4 py-2.5 bg-secondary/10 rounded-full">
-            <StarIcon className="w-5 h-5 text-secondary flex-shrink-0" />
-            <span className="bp-body-sm font-semibold text-secondary flex-1">Membership offer pending</span>
-            <div className="flex items-center gap-2">
-              {acceptError && (
-                <span className="bp-caption text-destructive">{acceptError}</span>
-              )}
-              <button
-                onClick={handleAcceptMembership}
-                disabled={acceptingMembership}
-                className="bp-button bp-button-primary rounded-full text-xs px-3 py-1 disabled:opacity-60"
-              >
-                {acceptingMembership ? '...' : 'Accept'}
-              </button>
-              <button
-                onClick={() => setMembershipDismissed(true)}
-                className="bp-caption text-secondary hover:text-foreground transition-colors underline"
-              >
-                Later
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Comparison chart: plan appointments vs past visits */}
+        {/* Comparison chart */}
         {activePlan.appointments.length > 0 && (
           <div className="bp-card-padding-md">
             <h3 className="bp-section-title mb-3">Your Plan at a Glance</h3>

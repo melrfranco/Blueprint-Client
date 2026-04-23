@@ -8,6 +8,7 @@ import { ActivationScreen } from './components/ActivationScreen';
 import { ClaimCodeEntry } from './components/ClaimCodeEntry';
 import { AppointmentsTab } from './components/AppointmentsTab';
 import { PlanView } from './components/PlanView';
+import { MembershipView } from './components/MembershipView';
 import { ProfileSettings } from './components/ProfileSettings';
 import { BottomNav } from './components/BottomNav';
 
@@ -69,19 +70,28 @@ const ClaimRoute: React.FC = () => {
 
 const AuthenticatedShell: React.FC = () => {
   const [activeTab, setActiveTab] = useState('home');
+  const [membershipDismissed, setMembershipDismissed] = useState(false);
   const { plans } = useClientData();
 
   const activePlan = plans.find((p) => p.status === 'active') || plans[0];
   const membershipOffered = activePlan?.membershipStatus === 'offered';
+  // Show notification bubble only when offered AND not yet dismissed
+  const membershipNotified = membershipOffered && !membershipDismissed;
+
+  // When user visits membership tab, dismiss the notification
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    if (tab === 'membership') setMembershipDismissed(true);
+  };
 
   const renderContent = () => {
     switch (activeTab) {
       case 'home':
         return <PlanView />;
-      case 'plan':
-        return <PlanView />;
       case 'appointments':
         return <AppointmentsTab />;
+      case 'membership':
+        return <MembershipView />;
       case 'profile':
         return <ProfileSettings />;
       default:
@@ -92,7 +102,7 @@ const AuthenticatedShell: React.FC = () => {
   return (
     <div className="bp-app-shell">
       {renderContent()}
-      <BottomNav activeTab={activeTab} onChange={setActiveTab} membershipOffered={membershipOffered} />
+      <BottomNav activeTab={activeTab} onChange={handleTabChange} membershipNotified={membershipNotified} />
     </div>
   );
 };

@@ -54,6 +54,38 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    console.log('[ComparisonChart] Input data:', {
+      planAppointments: planAppointments.length,
+      pastBookings: pastBookings.length,
+      allBookings: allBookings.length,
+      samplePastBooking: pastBookings[0] ? {
+        id: pastBookings[0].id,
+        service_variation_id: pastBookings[0].service_variation_id,
+        service_name: pastBookings[0].service_name,
+        service_duration: pastBookings[0].service_duration,
+        service_cost: pastBookings[0].service_cost,
+        start_at: pastBookings[0].start_at,
+        status: pastBookings[0].status,
+      } : 'NONE',
+      samplePlanAppt: planAppointments[0] ? {
+        id: planAppointments[0].id,
+        date: planAppointments[0].date,
+        services: planAppointments[0].services?.map(s => ({
+          id: s.id,
+          name: s.name,
+          variation_id: s.variation_id,
+          variation_name: s.variation_name,
+        })),
+      } : 'NONE',
+      sampleAllBooking: allBookings[0] ? {
+        id: allBookings[0].id,
+        service_variation_id: allBookings[0].service_variation_id,
+        service_name: allBookings[0].service_name,
+        start_at: allBookings[0].start_at,
+        status: allBookings[0].status,
+      } : 'NONE',
+    });
+
     // Past: group bookings by date, take last 3
     const filtered = pastBookings
       .filter((b) => !b.status.startsWith('CANCELLED'))
@@ -227,6 +259,16 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
       }
       data.push(row);
     }
+
+    console.log('[ComparisonChart] Built data:', {
+      totalRows: data.length,
+      pastRows: data.filter((d: any) => d.isPast).length,
+      futureRows: data.filter((d: any) => !d.isPast).length,
+      bookedRows: data.filter((d: any) => d.isBooked).length,
+      completedRows: data.filter((d: any) => d.isCompleted).length,
+      serviceNames: names,
+      sampleRow: data[0],
+    });
 
     return { chartData: data, serviceNames: names, serviceColorMap: colorMap };
   }, [planAppointments, pastBookings, allBookings, tab]);

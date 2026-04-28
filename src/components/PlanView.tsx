@@ -5,6 +5,7 @@ import { BookingFlow } from './BookingFlow';
 import { CalendarIcon, GiftIcon } from './icons';
 import { ComparisonChart } from './ComparisonBar';
 import type { ChartBarData } from './ComparisonBar';
+import { AppointmentDetailModal } from './AppointmentDetailModal';
 import type { Service, PlanAppointment } from '../types';
 
 function formatDateLong(date: Date): string {
@@ -26,6 +27,7 @@ export const PlanView: React.FC = () => {
   const [bookingService, setBookingService] = useState<Service | null>(null);
   const [bookingAppointment, setBookingAppointment] = useState<PlanAppointment | undefined>(undefined);
   const [planIdForBooking, setPlanIdForBooking] = useState<string | undefined>(undefined);
+  const [selectedBar, setSelectedBar] = useState<ChartBarData | null>(null);
 
   const activePlan = useMemo(
     () => plans.find((p) => p.status === 'active') || plans[0],
@@ -155,23 +157,7 @@ export const PlanView: React.FC = () => {
               pastBookings={pastBookings}
               allBookings={bookings}
               onBarClick={(data: ChartBarData) => {
-                const appt = data.appointment;
-                const primaryService = appt.services?.[0];
-                if (!primaryService) return;
-                const planVariationId = primaryService.variation_id || primaryService.id;
-                const bookable: Service = {
-                  id: primaryService.id,
-                  name: primaryService.name,
-                  variation_name: primaryService.variation_name,
-                  category: primaryService.category || 'Square Import',
-                  cost: primaryService.cost,
-                  duration: primaryService.duration,
-                  variation_id: planVariationId,
-                  item_id: primaryService.item_id,
-                };
-                setBookingService(bookable);
-                setBookingAppointment(appt);
-                setPlanIdForBooking(activePlan.id);
+                setSelectedBar(data);
               }}
             />
           </div>
@@ -327,6 +313,28 @@ export const PlanView: React.FC = () => {
           </section>
         )}
       </div>
+
+      {/* Appointment detail modal from chart bar click */}
+      {selectedBar && activePlan && (
+        <AppointmentDetailModal
+          data={selectedBar}
+          bookingEligible={bookingEligible}
+          planId={activePlan.id}
+          onBook={(service, appt, planId) => {
+            setSelectedBar(null);
+            setBookingService(service);
+            setBookingAppointment(appt);
+            setPlanIdForBooking(planId);
+          }}
+          onReschedule={(service, appt, planId) => {
+            setSelectedBar(null);
+            setBookingService(service);
+            setBookingAppointment(appt);
+            setPlanIdForBooking(planId);
+          }}
+          onClose={() => setSelectedBar(null)}
+        />
+      )}
     </div>
   );
 };

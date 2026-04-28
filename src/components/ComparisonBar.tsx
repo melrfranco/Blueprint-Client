@@ -438,6 +438,18 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
         ))}
       </div>
 
+      {/* Status indicators */}
+      <div className="mt-3 flex items-center justify-center gap-4">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-bold text-muted-foreground">✓</span>
+          <span className="bp-caption text-muted-foreground">Completed</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-bold text-primary">✓</span>
+          <span className="bp-caption text-muted-foreground">Booked</span>
+        </div>
+      </div>
+
       {/* Summary */}
       {summary && (
         <p className="bp-caption text-muted-foreground mt-3 text-center italic">{summary}</p>

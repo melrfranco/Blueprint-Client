@@ -49,106 +49,55 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
 }) => {
   const [tab, setTab] = useState<TabKey>('duration');
 
-  // Build recharts data: each object is a visit with service names as keys
+  // Build recharts data from ALL plan appointments (the plan is the source of truth)
   const { chartData, serviceNames, serviceColorMap } = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    console.log('[ComparisonChart] Input data:', {
-      planAppointments: planAppointments.length,
-      pastBookings: pastBookings.length,
-      allBookings: allBookings.length,
-      samplePastBooking: pastBookings[0] ? {
-        id: pastBookings[0].id,
-        service_variation_id: pastBookings[0].service_variation_id,
-        service_name: pastBookings[0].service_name,
-        service_duration: pastBookings[0].service_duration,
-        service_cost: pastBookings[0].service_cost,
-        start_at: pastBookings[0].start_at,
-        status: pastBookings[0].status,
-      } : 'NONE',
-      samplePlanAppt: planAppointments[0] ? {
-        id: planAppointments[0].id,
-        date: planAppointments[0].date,
-        services: planAppointments[0].services?.map(s => ({
-          id: s.id,
-          name: s.name,
-          variation_id: s.variation_id,
-          variation_name: s.variation_name,
-        })),
-      } : 'NONE',
-      sampleAllBooking: allBookings[0] ? {
-        id: allBookings[0].id,
-        service_variation_id: allBookings[0].service_variation_id,
-        service_name: allBookings[0].service_name,
-        start_at: allBookings[0].start_at,
-        status: allBookings[0].status,
-      } : 'NONE',
-    });
+    // Index all non-cancelled bookings for matching
+    const activeBookings = allBookings.filter((b) => !b.status.startsWith('CANCELLED'));
 
-    // Past: group bookings by date, take last 3
-    const filtered = pastBookings
-      .filter((b) => !b.status.startsWith('CANCELLED'))
-      .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime());
+    // Try to match a plan appointment to a booking
+    const findMatchingBookings = (appt: PlanAppointment): BookingRecord[] => {
+      const apptDate = appt.date instanceof Date ? appt.date : new Date(appt.date);
+      const matches: BookingRecord[] = [];
 
-    const groups = new Map<string, BookingRecord[]>();
-    for (const b of filtered) {
-      const key = new Date(b.start_at).toISOString().slice(0, 10);
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(b);
-    }
-
-    const pastEntries = Array.from(groups.entries()).slice(-3);
-
-    // Upcoming: future plan appointments only, then pad to 10
-    const futureAppts = planAppointments
-      .filter((a) => {
-        const d = a.date instanceof Date ? a.date : new Date(a.date);
-        return d.getTime() >= today.getTime();
-      })
-      .slice(0, 10);
-    while (futureAppts.length < 10) {
-      futureAppts.push({
-        id: `placeholder-${futureAppts.length}`,
-        date: new Date(today.getTime() + (futureAppts.length + 1) * 30 * 86400000),
-        services: [],
-        notes: '',
-      } as PlanAppointment);
-    }
-
-    // Build lookup maps from all bookings
-    const bookedVarIds = new Set<string>();
-    const bookedNames = new Set<string>();
-    const bookingByVarId = new Map<string, BookingRecord>();
-    const bookingByName = new Map<string, BookingRecord>();
-    const nonCancelledBookings = allBookings.filter((b) => !b.status.startsWith('CANCELLED'));
-    for (const b of allBookings) {
-      if (!b.status.startsWith('CANCELLED')) {
-        if (b.service_variation_id) {
-          bookedVarIds.add(b.service_variation_id);
-          bookingByVarId.set(b.service_variation_id, b);
+      for (const svc of appt.services ?? []) {
+        // Match by variation_id
+        const vid = svc.variation_id || svc.id;
+        if (vid) {
+          const byId = activeBookings.find((b) => b.service_variation_id === vid && !matches.includes(b));
+          if (byId) { matches.push(byId); continue; }
         }
-        if (b.service_name) {
-          const key = b.service_name.toLowerCase();
-          bookedNames.add(key);
-          bookingByName.set(key, b);
-        }
+        // Match by service name
+        const sname = (svc.variation_name ? `${svc.name} — ${svc.variation_name}` : svc.name).toLowerCase();
+        const byName = activeBookings.find((b) =>
+          b.service_name?.toLowerCase() === sname && !matches.includes(b),
+        );
+        if (byName) { matches.push(byName); continue; }
+        // Match by partial name
+        const byPartial = activeBookings.find((b) =>
+          b.service_name && svc.name &&
+          b.service_name.toLowerCase().includes(svc.name.toLowerCase()) &&
+          !matches.includes(b),
+        );
+        if (byPartial) { matches.push(byPartial); continue; }
       }
-    }
 
-    // Find past plan appointments for "planned vs completed" comparison
-    const pastPlanAppts = planAppointments.filter((a) => {
-      const d = a.date instanceof Date ? a.date : new Date(a.date);
-      return d.getTime() < today.getTime();
-    });
+      // If no service-level match, try date proximity (within 14 days)
+      if (matches.length === 0) {
+        const byDate = activeBookings.find((b) => {
+          const bd = new Date(b.start_at);
+          return Math.abs(bd.getTime() - apptDate.getTime()) <= 14 * 86400000;
+        });
+        if (byDate) matches.push(byDate);
+      }
 
-    const sameDay = (d1: Date, d2: Date) => d1.toISOString().slice(0, 10) === d2.toISOString().slice(0, 10);
+      return matches;
+    };
 
-    // Collect all service names for color mapping
+    // Collect service names for color mapping
     const nameSet = new Set<string>();
-    for (const [, bks] of pastEntries) {
-      for (const b of bks) nameSet.add(b.service_name ?? 'Service');
-    }
     for (const appt of planAppointments) {
       for (const svc of appt.services ?? []) {
         nameSet.add(svc.variation_name ? `${svc.name} — ${svc.variation_name}` : svc.name);
@@ -157,118 +106,44 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
     const names = Array.from(nameSet);
     const colorMap = new Map(names.map((n, i) => [n, SVC_COLORS[i % SVC_COLORS.length]]));
 
-    // Build data rows
-    const data: any[] = [];
-
-    // Past visits — completed appointments
-    for (const [dateKey, bks] of pastEntries) {
-      const matchingPlanAppt = pastPlanAppts.find((a) => {
-        const ad = a.date instanceof Date ? a.date : new Date(a.date);
-        return ad.toISOString().slice(0, 10) === dateKey;
-      });
-
-      const fallbackPastAppt: PlanAppointment = {
-        id: matchingPlanAppt?.id || `past-${dateKey}`,
-        date: matchingPlanAppt?.date || new Date(bks[0].start_at),
-        services: (matchingPlanAppt?.services?.length
-          ? matchingPlanAppt.services
-          : bks.map((b, i) => ({
-              id: `${b.id}-${i}`,
-              name: b.service_name || 'Service',
-              category: 'Completed Service',
-              cost: b.service_cost || 0,
-              duration: b.service_duration || 0,
-              variation_id: b.service_variation_id,
-            }))) as any,
-        notes: matchingPlanAppt?.notes || '',
-      };
-
-      const row: any = {
-        name: shortDate(bks[0].start_at),
-        isPast: true,
-        isBooked: false,
-        isCompleted: true,
-        plannedDate: matchingPlanAppt
-          ? (matchingPlanAppt.date instanceof Date ? matchingPlanAppt.date : new Date(matchingPlanAppt.date)).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-          : undefined,
-        actualDate: shortDate(bks[0].start_at),
-        _raw: bks,
-        _appt: fallbackPastAppt,
-        _bookings: bks,
-      };
-      for (const b of bks) {
-        const sname = b.service_name ?? 'Service';
-        row[sname] = (row[sname] || 0) + (tab === 'duration' ? (b.service_duration ?? 0) : (b.service_cost ?? 0));
-      }
-      data.push(row);
-    }
-
-    // Upcoming visits
-    for (const appt of futureAppts) {
-      const matchingBookings: BookingRecord[] = [];
+    // Build one row per plan appointment — ALL of them, past and future
+    const data: any[] = planAppointments.map((appt) => {
       const apptDate = appt.date instanceof Date ? appt.date : new Date(appt.date);
-      const isBooked = (appt.services ?? []).some((svc) => {
-        const vid = svc.variation_id || svc.id;
-        if (vid && bookedVarIds.has(vid)) {
-          const exact = bookingByVarId.get(vid);
-          if (exact && !matchingBookings.includes(exact)) {
-            matchingBookings.push(exact);
-            return true;
-          }
-        }
-        const sname = svc.variation_name ? `${svc.name} — ${svc.variation_name}` : svc.name;
-        if (sname && bookedNames.has(sname.toLowerCase())) {
-          const byName = bookingByName.get(sname.toLowerCase());
-          if (byName && !matchingBookings.includes(byName)) {
-            matchingBookings.push(byName);
-            return true;
-          }
-        }
-        const nearByDate = nonCancelledBookings.find((b) => {
-          const bd = new Date(b.start_at);
-          const withinWindow = Math.abs(bd.getTime() - apptDate.getTime()) <= 1000 * 60 * 60 * 24 * 14;
-          return withinWindow && sameDay(bd, apptDate);
-        });
-        if (nearByDate && !matchingBookings.includes(nearByDate)) {
-          matchingBookings.push(nearByDate);
-          return true;
-        }
-        return false;
-      });
+      const isPast = apptDate.getTime() < today.getTime();
+      const matchingBookings = findMatchingBookings(appt);
+      const isBooked = matchingBookings.length > 0;
+      const isCompleted = isPast; // past plan appointments are considered completed
+
+      const plannedDate = apptDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const actualDate = isBooked
+        ? shortDate(matchingBookings[0].start_at)
+        : undefined;
 
       const row: any = {
-        name: appt.date instanceof Date
-          ? shortDate(appt.date.toISOString())
-          : shortDate(String(appt.date)),
-        isPast: false,
+        name: shortDate(apptDate.toISOString()),
+        isPast,
         isBooked,
-        isCompleted: false,
-        plannedDate: appt.date instanceof Date
-          ? appt.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-          : new Date(appt.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        actualDate: isBooked && matchingBookings[0]
-          ? shortDate(matchingBookings[0].start_at)
-          : undefined,
-        _raw: appt,
-        _appt: appt.services?.length > 0 ? appt : undefined,
+        isCompleted,
+        plannedDate,
+        actualDate,
+        _appt: appt,
         _bookings: matchingBookings,
       };
+
+      // Bar heights come from plan service data (always available)
       for (const svc of appt.services ?? []) {
         const sname = svc.variation_name ? `${svc.name} — ${svc.variation_name}` : svc.name;
         row[sname] = (row[sname] || 0) + (tab === 'duration' ? (svc.duration ?? 0) : (svc.cost ?? 0));
       }
-      data.push(row);
-    }
 
-    console.log('[ComparisonChart] Built data:', {
-      totalRows: data.length,
-      pastRows: data.filter((d: any) => d.isPast).length,
-      futureRows: data.filter((d: any) => !d.isPast).length,
-      bookedRows: data.filter((d: any) => d.isBooked).length,
-      completedRows: data.filter((d: any) => d.isCompleted).length,
-      serviceNames: names,
-      sampleRow: data[0],
+      return row;
     });
+
+    console.log('[ComparisonChart] Built', data.length, 'bars from plan appointments.',
+      'Past:', data.filter(d => d.isPast).length,
+      'Booked:', data.filter(d => d.isBooked).length,
+      'Bookings available:', activeBookings.length,
+    );
 
     return { chartData: data, serviceNames: names, serviceColorMap: colorMap };
   }, [planAppointments, pastBookings, allBookings, tab]);
@@ -355,25 +230,16 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
             onClick={(data: any) => {
               if (!onBarClick || !data?.activePayload?.[0]?.payload) return;
               const row = data.activePayload[0].payload;
-              // Build ChartBarData from the row
               const appt = row._appt as PlanAppointment | undefined;
-              const bookings = (row._bookings || []) as BookingRecord[];
-              // For past bars without a matching plan appointment, create a synthetic one from bookings
-              const effectiveAppt: PlanAppointment = appt ?? {
-                id: `past-${row.name}`,
-                date: new Date(row.name),
-                services: [],
-                notes: '',
-              };
-              if (effectiveAppt.services.length === 0 && !row.isPast) return; // skip empty placeholders
+              if (!appt || !appt.services?.length) return;
               onBarClick({
-                appointment: effectiveAppt,
+                appointment: appt,
                 isPast: !!row.isPast,
                 isBooked: !!row.isBooked,
                 isCompleted: !!row.isCompleted,
                 plannedDate: row.plannedDate,
                 actualDate: row.actualDate,
-                matchingBookings: bookings,
+                matchingBookings: (row._bookings || []) as BookingRecord[],
               });
             }}
             className="cursor-pointer"

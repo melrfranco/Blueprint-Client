@@ -54,6 +54,7 @@ export interface GeneratedPlan {
   totalCost: number;
   status: PlanStatus;
   membershipStatus: MembershipStatus;
+  membershipTier?: MembershipTier | null;
   createdAt: Date;
   stylistId?: string;
 }

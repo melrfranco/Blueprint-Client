@@ -31,14 +31,18 @@ export const MembershipView: React.FC = () => {
     }
   };
 
-  // Calculate potential savings
+  // Calculate potential savings based on the tier's minSpend vs plan totalCost
+  // The savings = what they'd pay a la carte (totalCost) minus what membership costs (minSpend * 12)
+  // If membership is cheaper than a la carte, that's the savings.
   const savings = useMemo(() => {
-    if (!activePlan) return null;
+    if (!activePlan || !activePlan.membershipTier) return null;
     const totalCost = activePlan.totalCost || 0;
-    // Assume ~15% member discount as a baseline benefit
-    const monthlySavings = (totalCost / 12) * 0.15;
-    const annualSavings = totalCost * 0.15;
-    return { monthlySavings, annualSavings };
+    const monthlyMembershipRate = activePlan.membershipTier.minSpend;
+    const annualMembershipCost = monthlyMembershipRate * 12;
+    // Savings = a la carte total - membership total (only if membership is cheaper)
+    const annualSavings = Math.max(0, totalCost - annualMembershipCost);
+    const monthlySavings = annualSavings / 12;
+    return { monthlySavings, annualSavings, annualMembershipCost };
   }, [activePlan]);
 
   if (!activePlan) {
@@ -69,10 +73,20 @@ export const MembershipView: React.FC = () => {
                 <CheckCircleIcon className="w-8 h-8 text-primary" />
               </div>
               <div>
-                <h3 className="bp-section-title">Active Member</h3>
-                <p className="bp-body-sm text-muted-foreground">
-                  Enjoy your membership perks and discounts on every visit.
-                </p>
+                <h3 className="bp-section-title">
+                  {activePlan.membershipTier ? `${activePlan.membershipTier.name} Member` : 'Active Member'}
+                </h3>
+                {activePlan.membershipTier?.perks && activePlan.membershipTier.perks.length > 0 ? (
+                  <div className="mt-2 space-y-1">
+                    {activePlan.membershipTier.perks.map((perk, i) => (
+                      <p key={i} className="bp-caption text-muted-foreground">• {perk}</p>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="bp-body-sm text-muted-foreground">
+                    Enjoy your membership perks and discounts on every visit.
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -83,29 +97,33 @@ export const MembershipView: React.FC = () => {
                 <StarIcon className="w-8 h-8 text-secondary" />
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="bp-section-title mb-1">You're Invited!</h3>
+                <h3 className="bp-section-title mb-1">
+                  {activePlan.membershipTier
+                    ? `${activePlan.membershipTier.name} Membership`
+                    : "You're Invited!"}
+                </h3>
                 <p className="bp-body-sm text-muted-foreground mb-4">
-                  Your salon has offered you a membership. Join to unlock exclusive savings and perks.
+                  Your salon has offered you a membership. Join to unlock exclusive benefits.
                 </p>
 
-                {/* Benefits */}
-                <div className="space-y-3 mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
-                    <span className="bp-body-sm">Discounted rates on all services</span>
+                {/* Real perks from the tier */}
+                {activePlan.membershipTier?.perks && activePlan.membershipTier.perks.length > 0 ? (
+                  <div className="space-y-3 mb-4">
+                    {activePlan.membershipTier.perks.map((perk, i) => (
+                      <div key={i} className="flex items-center gap-3">
+                        <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
+                        <span className="bp-body-sm">{perk}</span>
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
-                    <span className="bp-body-sm">Priority booking & scheduling</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
-                    <span className="bp-body-sm">Personalized plan with your stylist</span>
-                  </div>
-                </div>
+                ) : (
+                  <p className="bp-body-sm text-muted-foreground mb-4">
+                    Ask your salon about the benefits included with your membership.
+                  </p>
+                )}
 
-                {/* Savings estimate */}
-                {savings && (
+                {/* Savings estimate — only show if there are real savings */}
+                {savings && savings.annualSavings > 0 && (
                   <div className="flex items-center gap-4 p-3 bg-primary/5 rounded-2xl mb-4">
                     <GiftIcon className="w-6 h-6 text-primary flex-shrink-0" />
                     <div>

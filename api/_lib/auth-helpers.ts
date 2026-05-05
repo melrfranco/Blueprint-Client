@@ -14,7 +14,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { log } from './logger';
+import { log } from './logger.js';
 
 export interface AuthenticatedClient {
   userId: string;

@@ -1,8 +1,8 @@
 
 import { createClient } from '@supabase/supabase-js';
-import { authenticateClient } from '../_lib/auth-helpers';
-import { resolveProvider } from '../_lib/provider-factory';
-import { log } from '../_lib/logger';
+import { authenticateClient } from '../_lib/auth-helpers.js';
+import { resolveProvider } from '../_lib/provider-factory.js';
+import { log } from '../_lib/logger.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {

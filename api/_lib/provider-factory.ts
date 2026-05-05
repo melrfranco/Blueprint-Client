@@ -28,9 +28,9 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import type { BookingProvider } from './booking-provider';
-import { SquareBookingAdapter } from './square-booking-adapter';
-import { log } from './logger';
+import type { BookingProvider } from './booking-provider.js';
+import { SquareBookingAdapter } from './square-booking-adapter.js';
+import { log } from './logger.js';
 
 interface ProviderConfig {
   provider_type: string;

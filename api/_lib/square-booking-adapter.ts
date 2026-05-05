@@ -14,8 +14,8 @@ import type {
   RangeAvailabilityParams,
   CreateBookingParams,
   BookingProviderResult,
-} from './booking-provider';
-import { log } from './logger';
+} from './booking-provider.js';
+import { log } from './logger.js';
 
 const SQUARE_VERSION = '2025-10-16';
 

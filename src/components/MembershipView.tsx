@@ -4,7 +4,7 @@ import { apiClient } from '../services/apiClient';
 import { StarIcon, CheckCircleIcon, GiftIcon } from './icons';
 
 export const MembershipView: React.FC = () => {
-  const { plans, refresh } = useClientData();
+  const { plans, membershipTiers, refresh } = useClientData();
   const [accepting, setAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,19 +31,29 @@ export const MembershipView: React.FC = () => {
     }
   };
 
+  // Resolve the qualifying tier: prefer the one saved in the plan data,
+  // fall back to computing it from the salon's membershipTiers (same logic as Pro app)
+  const qualifyingTier = useMemo(() => {
+    if (activePlan?.membershipTier) return activePlan.membershipTier;
+    if (!activePlan || membershipTiers.length === 0) return null;
+    const projectedMonthlySpend = (activePlan.totalCost || 0) / 12;
+    const sortedTiers = [...membershipTiers].sort((a, b) => b.minSpend - a.minSpend);
+    return sortedTiers.find(t => projectedMonthlySpend >= t.minSpend) || sortedTiers[sortedTiers.length - 1] || null;
+  }, [activePlan, membershipTiers]);
+
   // Calculate potential savings based on the tier's minSpend vs plan totalCost
   // The savings = what they'd pay a la carte (totalCost) minus what membership costs (minSpend * 12)
   // If membership is cheaper than a la carte, that's the savings.
   const savings = useMemo(() => {
-    if (!activePlan || !activePlan.membershipTier) return null;
+    if (!activePlan || !qualifyingTier) return null;
     const totalCost = activePlan.totalCost || 0;
-    const monthlyMembershipRate = activePlan.membershipTier.minSpend;
+    const monthlyMembershipRate = qualifyingTier.minSpend;
     const annualMembershipCost = monthlyMembershipRate * 12;
     // Savings = a la carte total - membership total (only if membership is cheaper)
     const annualSavings = Math.max(0, totalCost - annualMembershipCost);
     const monthlySavings = annualSavings / 12;
     return { monthlySavings, annualSavings, annualMembershipCost };
-  }, [activePlan]);
+  }, [activePlan, qualifyingTier]);
 
   if (!activePlan) {
     return (
@@ -74,11 +84,11 @@ export const MembershipView: React.FC = () => {
               </div>
               <div>
                 <h3 className="bp-section-title">
-                  {activePlan.membershipTier ? `${activePlan.membershipTier.name} Member` : 'Active Member'}
+                  {qualifyingTier ? `${qualifyingTier.name} Member` : 'Active Member'}
                 </h3>
-                {activePlan.membershipTier?.perks && activePlan.membershipTier.perks.length > 0 ? (
+                {qualifyingTier?.perks && qualifyingTier.perks.length > 0 ? (
                   <div className="mt-2 space-y-1">
-                    {activePlan.membershipTier.perks.map((perk, i) => (
+                    {qualifyingTier.perks.map((perk, i) => (
                       <p key={i} className="bp-caption text-muted-foreground">• {perk}</p>
                     ))}
                   </div>
@@ -98,8 +108,8 @@ export const MembershipView: React.FC = () => {
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="bp-section-title mb-1">
-                  {activePlan.membershipTier
-                    ? `${activePlan.membershipTier.name} Membership`
+                  {qualifyingTier
+                    ? `${qualifyingTier.name} Membership`
                     : "You're Invited!"}
                 </h3>
                 <p className="bp-body-sm text-muted-foreground mb-4">
@@ -107,9 +117,9 @@ export const MembershipView: React.FC = () => {
                 </p>
 
                 {/* Real perks from the tier */}
-                {activePlan.membershipTier?.perks && activePlan.membershipTier.perks.length > 0 ? (
+                {qualifyingTier?.perks && qualifyingTier.perks.length > 0 ? (
                   <div className="space-y-3 mb-4">
-                    {activePlan.membershipTier.perks.map((perk, i) => (
+                    {qualifyingTier.perks.map((perk, i) => (
                       <div key={i} className="flex items-center gap-3">
                         <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
                         <span className="bp-body-sm">{perk}</span>

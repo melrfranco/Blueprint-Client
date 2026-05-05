@@ -73,12 +73,25 @@ export default async function handler(req: any, res: any) {
     variation_name: s.metadata?.variation_name || null,
   }));
 
+  // Fetch membership config from merchant_settings.settings (safe — no tokens exposed)
+  let membershipConfig = null;
+  const { data: merchantSettings } = await supabase
+    .from('merchant_settings')
+    .select('settings')
+    .eq('supabase_user_id', salon.owner_user_id)
+    .maybeSingle();
+  if (merchantSettings?.settings?.membershipConfig) {
+    membershipConfig = merchantSettings.settings.membershipConfig;
+  }
+
   return res.status(200).json({
     services: sanitized,
+    membershipConfig,
     _debug: {
       salon_id,
       owner_user_id: salon.owner_user_id,
       rawServicesFound: services?.length || 0,
+      hasMembershipConfig: !!membershipConfig,
     },
   });
 }

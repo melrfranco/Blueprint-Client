@@ -59,6 +59,12 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
       setServices(loadedServices);
       console.log('[ClientData] Services loaded:', loadedServices.length, 'debug:', servicesJson._debug);
 
+      // Load membership tiers from salon config
+      if (servicesJson.membershipConfig?.tiers) {
+        setMembershipTiers(servicesJson.membershipConfig.tiers);
+        console.log('[ClientData] Membership tiers loaded:', servicesJson.membershipConfig.tiers.length, 'enabled:', servicesJson.membershipConfig.enabled);
+      }
+
       // Hydrate plan rows from the server response
       const hydratePlanRows = (rows: any[]): GeneratedPlan[] =>
         rows.map((row: any) => {

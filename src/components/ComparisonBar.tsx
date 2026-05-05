@@ -255,7 +255,7 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
                   label = `✓ ${payload.value}`;
                   fill = 'var(--muted-foreground)';
                 } else if (item?.isBooked) {
-                  label = `✓ ${payload.value}`;
+                  label = `● ${payload.value}`;
                   fill = 'var(--primary)';
                 }
                 return (
@@ -353,7 +353,7 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
           <span className="bp-caption text-muted-foreground">Completed</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-[10px] font-bold text-primary">✓</span>
+          <span className="text-[10px] font-bold text-primary">●</span>
           <span className="bp-caption text-muted-foreground">Booked</span>
         </div>
       </div>

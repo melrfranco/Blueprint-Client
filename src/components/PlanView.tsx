@@ -34,7 +34,7 @@ export const PlanView: React.FC = () => {
     [plans],
   );
 
-  // Map bookings by both variation_id AND service name for robust matching
+  // Map bookings by variation_id, service name, AND plan_id for robust matching
   const bookedVariationIds = useMemo(() => {
     const s = new Set<string>();
     for (const b of bookings) {
@@ -55,6 +55,25 @@ export const PlanView: React.FC = () => {
     }
     return s;
   }, [bookings]);
+
+  // Track which plan appointment indices are booked (by plan_id + date proximity)
+  const bookedPlanAppointmentIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const b of bookings) {
+      if (!b.status.startsWith('CANCELLED') && b.plan_id === activePlan?.id) {
+        // Match by plan_id — any active booking for this plan counts
+        const bookingDate = new Date(b.start_at);
+        for (const appt of activePlan?.appointments || []) {
+          const apptDate = appt.date instanceof Date ? appt.date : new Date(appt.date);
+          // Within 7 days of planned date = match
+          if (Math.abs(bookingDate.getTime() - apptDate.getTime()) <= 7 * 86400000) {
+            s.add(appt.id);
+          }
+        }
+      }
+    }
+    return s;
+  }, [bookings, activePlan]);
 
   // Past bookings for comparison chart
   const pastBookings = useMemo(() => {
@@ -198,11 +217,9 @@ export const PlanView: React.FC = () => {
                 const svcName = primaryService?.variation_name
                   ? `${primaryService.name} — ${primaryService.variation_name}`
                   : primaryService?.name;
-                const alreadyBooked = variationId
-                  ? bookedVariationIds.has(variationId)
-                  : svcName
-                    ? bookedServiceNames.has(svcName.toLowerCase())
-                    : false;
+                const alreadyBooked = bookedPlanAppointmentIds.has(appt.id)
+                  || (variationId ? bookedVariationIds.has(variationId) : false)
+                  || (svcName ? bookedServiceNames.has(svcName.toLowerCase()) : false);
 
                 return (
                   <div key={appt.id || idx} className="bp-card bp-card-padding-sm">

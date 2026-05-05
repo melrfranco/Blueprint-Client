@@ -3,6 +3,7 @@ import { apiClient } from '../services/apiClient';
 import type { TimeSlot } from '../services/apiClient';
 import type { Service, PlanAppointment } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { useClientData } from '../contexts/ClientDataContext';
 import { CheckCircleIcon, CalendarIcon, ChevronLeftIcon, ChevronRightIcon, RefreshIcon } from './icons';
 
 interface BookingFlowProps {
@@ -17,6 +18,7 @@ type TimePeriod = 'morning' | 'afternoon' | 'evening' | 'all';
 
 export const BookingFlow: React.FC<BookingFlowProps> = ({ service, planId, appointment, onClose }) => {
   const { bookingEligible } = useAuth();
+  const { addBooking } = useClientData();
 
   const [bookingStep, setBookingStep] = useState<BookingStep>('select-date');
   const [bookingDate, setBookingDate] = useState<string | null>(null);
@@ -153,12 +155,28 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({ service, planId, appoi
     setIsBooking(true);
     setFetchError(null);
     try {
-      await apiClient.createBooking({
+      const result = await apiClient.createBooking({
         serviceVariationId: variationId,
         startAt: slotTime,
         teamMemberId: selectedTeamMemberId,
         planId,
       });
+      // Optimistically add booking to local state so indicators update immediately
+      addBooking({
+        id: result.id || `optimistic-${Date.now()}`,
+        plan_id: planId || null,
+        service_variation_id: variationId || '',
+        team_member_id: selectedTeamMemberId || null,
+        status: result.status || 'ACCEPTED',
+        start_at: result.start_at || slotTime,
+        end_at: result.end_at || null,
+        service_name: service.variation_name
+          ? `${service.name} — ${service.variation_name}`
+          : service.name,
+        service_duration: service.duration,
+        service_cost: service.cost,
+      });
+      console.log('[BookingFlow] Booking created:', result.id, 'variation:', variationId, 'plan:', planId, 'warning:', result.warning);
       setBookingSuccess(true);
     } catch (e: any) {
       setFetchError(e?.message || 'Booking failed. Please try again.');

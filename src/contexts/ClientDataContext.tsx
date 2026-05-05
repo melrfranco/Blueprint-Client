@@ -11,6 +11,7 @@ interface ClientDataContextType {
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
+  addBooking: (booking: BookingRecord) => void;
 }
 
 const ClientDataContext = createContext<ClientDataContextType | undefined>(undefined);
@@ -24,6 +25,13 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hasLoadedOnce = useRef(false);
+  const optimisticBookingsRef = useRef<BookingRecord[]>([]);
+
+  const addBooking = useCallback((booking: BookingRecord) => {
+    console.log('[ClientData] Optimistic addBooking:', booking.id, booking.service_variation_id);
+    optimisticBookingsRef.current = [...optimisticBookingsRef.current, booking];
+    setBookings(prev => [...prev, booking]);
+  }, []);
 
   const refresh = useCallback(async () => {
     if (!user || !membership) {
@@ -110,6 +118,7 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
       } else {
         bookingsData = bData || [];
       }
+      console.log('[ClientData] Bookings from Supabase:', bookingsData.length, bookingsData.map((b: any) => ({ id: b.id, svi: b.service_variation_id, status: b.status })));
 
       // Decorate bookings with display-friendly service info
       const serviceByVariation = new Map(
@@ -136,7 +145,15 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
           service_cost: svc?.cost,
         };
       });
-      setBookings(decoratedBookings);
+      // Merge with any optimistic bookings that haven't appeared in DB yet
+      const dbIds = new Set(decoratedBookings.map(b => b.id));
+      const optimisticKeepers = optimisticBookingsRef.current.filter(ob => !dbIds.has(ob.id));
+      if (optimisticKeepers.length > 0) {
+        console.log('[ClientData] Keeping', optimisticKeepers.length, 'optimistic bookings not yet in DB');
+      }
+      setBookings([...decoratedBookings, ...optimisticKeepers]);
+      // Clear optimistic bookings that are now in DB
+      optimisticBookingsRef.current = optimisticKeepers;
       hasLoadedOnce.current = true;
 
     } catch (err) {
@@ -161,7 +178,7 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
   }, [isAuthenticated, membership, accessToken, refresh]);
 
   return (
-    <ClientDataContext.Provider value={{ services, membershipTiers, plans, bookings, loading, error, refresh }}>
+    <ClientDataContext.Provider value={{ services, membershipTiers, plans, bookings, loading, error, refresh, addBooking }}>
       {children}
     </ClientDataContext.Provider>
   );

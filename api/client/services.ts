@@ -73,15 +73,24 @@ export default async function handler(req: any, res: any) {
     variation_name: s.metadata?.variation_name || null,
   }));
 
-  // Fetch membership config from merchant_settings.settings (safe — no tokens exposed)
+  // Fetch membership tiers from the dedicated table (safe — no tokens exposed)
   let membershipConfig = null;
-  const { data: merchantSettings } = await supabase
-    .from('merchant_settings')
-    .select('settings')
-    .eq('supabase_user_id', salon.owner_user_id)
-    .maybeSingle();
-  if (merchantSettings?.settings?.membershipConfig) {
-    membershipConfig = merchantSettings.settings.membershipConfig;
+  const { data: tierRows } = await supabase
+    .from('membership_tiers')
+    .select('*')
+    .eq('salon_id', salon_id)
+    .order('position', { ascending: true });
+  if (tierRows && tierRows.length > 0) {
+    membershipConfig = {
+      enabled: true,
+      tiers: tierRows.map((t: any) => ({
+        id: t.id,
+        name: t.name,
+        minSpend: Number(t.min_spend) || 0,
+        perks: Array.isArray(t.perks) ? t.perks : [],
+        color: t.color || '#6AA4BC',
+      })),
+    };
   }
 
   return res.status(200).json({

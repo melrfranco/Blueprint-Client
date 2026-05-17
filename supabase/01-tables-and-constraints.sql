@@ -295,6 +295,26 @@ CREATE INDEX IF NOT EXISTS idx_plans_client_user_id
 CREATE INDEX IF NOT EXISTS idx_merchant_settings_supabase_user_id
   ON merchant_settings (supabase_user_id);
 
+-- ── membership_tiers ──
+-- Stores admin-defined membership tiers per salon (e.g. Gold, Silver, Bronze).
+-- Each tier has a minimum monthly spend, perks list, and display color.
+-- Clients are matched to a tier based on their plan's projected monthly spend.
+CREATE TABLE IF NOT EXISTS membership_tiers (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  salon_id      uuid NOT NULL REFERENCES salons(id) ON DELETE CASCADE,
+  name          text NOT NULL,
+  min_spend     numeric NOT NULL DEFAULT 0,
+  perks         jsonb NOT NULL DEFAULT '[]',  -- array of strings: ["10% off all services", "Free add-on"]
+  color         text NOT NULL DEFAULT '#6AA4BC',
+  position      int NOT NULL DEFAULT 0,        -- display order (lower = higher tier)
+  enabled       boolean NOT NULL DEFAULT true,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_membership_tiers_salon_id
+  ON membership_tiers (salon_id);
+
 -- ── services ──
 -- GIN index on metadata for @> (contains) queries used by service lookups
 CREATE INDEX IF NOT EXISTS idx_services_metadata_gin

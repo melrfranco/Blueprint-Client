@@ -124,3 +124,30 @@ ALTER TABLE client_invitations ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE merchant_settings ENABLE ROW LEVEL SECURITY;
 -- Intentionally NO policies for authenticated (client) users.
+
+-- membership_tiers
+-- ────────────────────────────────────────────────────────────────
+-- Admins own the tiers (full CRUD). Clients and stylists can read
+-- the tiers for their salon so the client app can display perks.
+
+ALTER TABLE membership_tiers ENABLE ROW LEVEL SECURITY;
+
+-- Admins (salon owners) can do anything with their salon's tiers
+CREATE POLICY "Admins can manage their salon tiers"
+  ON membership_tiers FOR ALL
+  USING (
+    salon_id IN (SELECT id FROM salons WHERE owner_user_id = auth.uid())
+  )
+  WITH CHECK (
+    salon_id IN (SELECT id FROM salons WHERE owner_user_id = auth.uid())
+  );
+
+-- Clients/stylists can read tiers for salons they belong to
+CREATE POLICY "Members can read salon tiers"
+  ON membership_tiers FOR SELECT
+  USING (
+    salon_id IN (
+      SELECT salon_id FROM salon_memberships
+      WHERE user_id = auth.uid() AND status = 'active'
+    )
+  );
